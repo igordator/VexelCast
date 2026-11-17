@@ -289,7 +289,7 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.5';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
@@ -297,10 +297,23 @@ const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
    Wi-Fi de empresa…). As variantes "transport=tcp" passam em redes que bloqueiam UDP. */
 const PUBLIC_ICE = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
-  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478',
-           'turn:eu-0.turn.peerjs.com:3478?transport=tcp', 'turn:us-0.turn.peerjs.com:3478?transport=tcp'],
+  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:eu-0.turn.peerjs.com:3478?transport=tcp'],
     username: 'peerjs', credential: 'peerjsp' }
 ];
+/* Segunda retransmissão grátis, sem conta: Open Relay (Metered), modo "static auth" com o segredo
+   público que eles publicam (metered.ca/tools/openrelay). As credenciais são temporárias (24 h),
+   calculadas aqui: utilizador = "<expira>:vexelcast", palavra-passe = base64(HMAC-SHA1(segredo, utilizador)). */
+const OPENRELAY = { host: 'staticauth.openrelay.metered.ca', secret: 'openrelayprojectsecret' };
+let OPEN_RELAY = null;
+async function openRelayServer(nowSec) {
+  const user = (Math.floor(nowSec || Date.now() / 1000) + 86400) + ':vexelcast';
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(OPENRELAY.secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(user)));
+  return { urls: ['turn:' + OPENRELAY.host + ':80', 'turn:' + OPENRELAY.host + ':80?transport=tcp', 'turns:' + OPENRELAY.host + ':443?transport=tcp'],
+           username: user, credential: btoa(String.fromCharCode(...sig)) };
+}
+const openRelayReady = (window.crypto && crypto.subtle ? openRelayServer().then(x => { OPEN_RELAY = x; }) : Promise.resolve()).catch(() => {});
 // Servidor TURN próprio (opcional, ex.: conta grátis ExpressTURN). Fica guardado só neste browser.
 function myTurn() {
   try { const t = JSON.parse(localStorage.getItem('vx-turn') || 'null'); if (t && t.urls && t.urls.length) return t; } catch (e) {}
@@ -321,7 +334,7 @@ function turnUrls(text) {
 function iceServers() {
   if (params.has('noice')) return [];
   const t = myTurn();
-  return t ? [t].concat(PUBLIC_ICE) : PUBLIC_ICE;
+  return (t ? [t] : []).concat(PUBLIC_ICE, OPEN_RELAY ? [OPEN_RELAY] : []);
 }
 function rtcConfig() { return { iceServers: iceServers(), bundlePolicy: 'max-bundle' }; }
 
@@ -1362,9 +1375,15 @@ async function testNet(p) {
     ['Rede local', gatherKinds([], false, 3000), k => k.has('host') ? [true, 'endereço visível'] : k.has('mdns') ? [true, 'endereço escondido pelo browser (mDNS)'] : [false, 'sem rede']],
     ['Internet (STUN Google)', gatherKinds([{ urls: 'stun:stun.l.google.com:19302' }], false), k => [k.has('srflx'), k.has('srflx') ? 'responde' : 'não responde']],
     ['Internet (STUN Cloudflare)', gatherKinds([{ urls: 'stun:stun.cloudflare.com:3478' }], false), k => [k.has('srflx'), k.has('srflx') ? 'responde' : 'não responde']],
-    ['Retransmissão grátis PeerJS (UDP)', gatherKinds([Object.assign({ urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'] }, cred)], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']],
-    ['Retransmissão grátis PeerJS (TCP)', gatherKinds([Object.assign({ urls: ['turn:eu-0.turn.peerjs.com:3478?transport=tcp', 'turn:us-0.turn.peerjs.com:3478?transport=tcp'] }, cred)], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']]
+    ['Retransmissão grátis PeerJS (UDP)', gatherKinds([Object.assign({ urls: ['turn:eu-0.turn.peerjs.com:3478'] }, cred)], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']],
+    ['Retransmissão grátis PeerJS (TCP)', gatherKinds([Object.assign({ urls: ['turn:eu-0.turn.peerjs.com:3478?transport=tcp'] }, cred)], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']]
   ];
+  await openRelayReady;
+  if (OPEN_RELAY) {
+    const o = OPEN_RELAY;
+    tests.push(['Retransmissão grátis Open Relay (UDP)', gatherKinds([{ urls: [o.urls[0]], username: o.username, credential: o.credential }], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']]);
+    tests.push(['Retransmissão grátis Open Relay (TCP/TLS)', gatherKinds([{ urls: o.urls.slice(1), username: o.username, credential: o.credential }], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']]);
+  }
   const mine = myTurn();
   if (mine) tests.push(['O teu servidor TURN', gatherKinds([mine], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']]);
   const res = await Promise.all(tests.map(t => t[1]));
