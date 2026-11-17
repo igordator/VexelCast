@@ -205,6 +205,12 @@
     <button class="btn go" id="goBtn" onclick="startSending()"><i data-ic="play"></i> Começar a transmitir</button>
     <button class="btn stop" id="stopBtn" onclick="stopSending()" style="display:none"><i data-ic="stop"></i> Parar</button>
     <div class="status" id="sStatus">À espera</div>
+    <div class="verify hidden" id="lanBox">
+      <div style="color:var(--muted)" id="lanInfo"></div>
+      <div style="color:var(--muted)">Se os dois aparelhos estão no <b>mesmo Wi-Fi</b>, carrega aqui. O Chrome pede autorização para o microfone:
+        é só para ele deixar o PC mostrar o seu endereço na rede local. <b>O microfone nunca é usado</b> (é desligado logo a seguir).</div>
+      <button class="btn go lanBtn" onclick="lanRetry()">Ligação na mesma rede</button>
+    </div>
     <div class="verify hidden" id="verify">
       <div><b>Código de verificação</b></div>
       <div class="sas" id="sasPc">0000</div>
@@ -395,7 +401,11 @@ function show(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   if (id) $(id).classList.add('on');
 }
-function setStatus(el, text, kind) { el.innerHTML = richText(text); el.className = 'status ' + (kind || ''); }
+function setStatus(el, text, kind) {
+  el.innerHTML = richText(text);
+  el.classList.remove('ok', 'warn', 'err'); el.classList.add('status');   // mantém as outras classes do elemento
+  if (kind) el.classList.add(kind);
+}
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 /* Códigos de 8 caracteres (sem 0/O, 1/I/L para não se confundirem): mais de 850 mil milhões de
    combinações. O servidor nunca deixa dois aparelhos ligados terem o mesmo código e cada
@@ -431,6 +441,32 @@ function rnd(n) {
   return s;
 }
 function candJson(c) { return { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex }; }
+/* Diagnóstico de rede: que tipos de "endereço" (candidato ICE) cada lado conseguiu.
+   mdns = endereço local escondido pelo browser (nome .local); host = endereço local visível;
+   srflx/prflx = endereço público (internet); relay = servidor de retransmissão (TURN). */
+function candKind(c) {
+  const p = String(c || '').replace(/^a=/, '').split(' ');
+  const t = p[7]; if (!t) return '';
+  return t === 'host' && /\.local$/i.test(p[4]) ? 'mdns' : t;
+}
+function kindsFromSdp(sdp, set) { (String(sdp || '').match(/^a=candidate:.*$/gm) || []).forEach(l => { const k = candKind(l); if (k) set.add(k); }); }
+const KIND_LABEL = { mdns: 'local escondido (mDNS)', host: 'local', srflx: 'internet', prflx: 'internet', relay: 'retransmissão' };
+function kindsText(set) { return [...new Set([...set].map(k => KIND_LABEL[k] || k))].join(', ') || 'nenhum'; }
+function netReason(L, R) {
+  const onlyMdns = S => S.has('mdns') && !S.has('host');
+  const relay = L.has('relay') || R.has('relay');
+  if (!R.size) return 'O outro aparelho não enviou nenhum endereço de rede (a internet dele está a funcionar?).';
+  if (onlyMdns(L) && onlyMdns(R))
+    return 'Os dois browsers esconderam o endereço na rede local (mDNS) e o router não deixou descobri-lo' +
+      (relay ? '' : ', e os servidores de retransmissão gratuitos não responderam') +
+      '. Solução: no PC, carrega em “Ligação na mesma rede”.';
+  if (!relay)
+    return 'Não há caminho direto entre os aparelhos e os servidores de retransmissão gratuitos não responderam nesta rede. ' +
+      'Se estão no mesmo Wi-Fi, o router pode estar a isolar os aparelhos (rede de convidados ou “isolamento de clientes”). ' +
+      'Solução: junta um servidor TURN teu em “Ligar entre redes diferentes”, ou usa outra rede.';
+  return 'Nem o caminho direto nem a retransmissão passaram: um router, firewall ou VPN está a bloquear. ' +
+    'Desliga VPNs, experimenta outra rede ou junta um servidor TURN teu.';
+}
 
 /* Ligação ao servidor de sinalização (protocolo do peerjs-server) */
 class Signal {
@@ -555,7 +591,9 @@ async function viewerMsg(m) {
     const auto = !!(vExpect && vExpect.src === m.src && Date.now() < vExpect.until);
     vExpect = null;
     closeViewerPc();
-    const remote = vRemote = { src: m.src, cid: p.connectionId, accepted: false, sas: null, fp: sdpFingerprint(p.sdp.sdp).toUpperCase() };
+    const remote = vRemote = { src: m.src, cid: p.connectionId, accepted: false, sas: null, fp: sdpFingerprint(p.sdp.sdp).toUpperCase(),
+                               lk: new Set(), rk: new Set(), ever: false };
+    kindsFromSdp(p.sdp.sdp, remote.rk);
     const held = [];
     vPending = [];
     vStream = new MediaStream();
@@ -578,17 +616,27 @@ async function viewerMsg(m) {
     };
     pc.onicecandidate = e => {
       if (!(e.candidate && e.candidate.candidate)) return;
+      remote.lk.add(candKind(e.candidate.candidate));
       const c = { candidate: candJson(e.candidate), type: 'media', connectionId: remote.cid };
       // até carregares em Aceitar, o ecrã de destino não diz a ninguém como chegar até ele
       if (remote.accepted) vSig.send('CANDIDATE', remote.src, c); else held.push(c);
     };
     pc.oniceconnectionstatechange = () => {
-      if (pc !== vPc || !remote.accepted) return;
+      if (pc !== vPc) return;
       const s = pc.iceConnectionState;
+      // a ligação pode ficar pronta ANTES de carregares em Aceitar (os aparelhos encontram-se em
+      // segundo plano; nada é mostrado nem enviado até aceitares e confirmares o código)
+      if (s === 'connected' || s === 'completed') remote.ever = true;
+      if (!remote.accepted) return;
       if (s === 'connected' || s === 'completed') {
+        remote.ever = true;
         setStatus($('vStatus'), 'Ligado ✔', 'ok'); if (vWatch && !vWatch.connectedAt) vWatch.connectedAt = Date.now();
         if (remote.lostAt) { remote.lostAt = 0; clearTimeout(remote.lostTimer); $('waitOv').style.display = 'none'; }
+      } else if (s === 'failed' && !remote.ever) {
+        // nunca chegou a ligar: não é "a ligação caiu", é "não há caminho" — explicar porquê
+        backToCode('Os aparelhos não se conseguiram ligar. ' + netReason(remote.lk, remote.rk));
       } else if (s === 'failed' || s === 'disconnected') {
+        if (!remote.ever) return;
         // não desistir logo: o PC/telemóvel vai tentar religar (ICE restart) durante ~1 minuto
         if (remote.lostAt) return;
         remote.lostAt = Date.now();
@@ -621,7 +669,7 @@ async function viewerMsg(m) {
         remote.accepted = true; hideAsk();
         vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp }, type: 'media', connectionId: remote.cid });
         held.forEach(c => vSig.send('CANDIDATE', remote.src, c)); held.length = 0;
-        if (vWatch) vWatch.start = Date.now();
+        if (vWatch) { vWatch.start = Date.now(); if (['connected', 'completed'].includes(pc.iceConnectionState)) vWatch.connectedAt = Date.now(); }
         setStatus($('vStatus'), 'Aceite. À espera da confirmação no PC/telemóvel…', 'warn');
         $('waitOv').innerHTML = 'À espera que confirmes o código <b>' + code + '</b><br>no PC ou no telemóvel…';
         $('waitOv').style.display = 'block';
@@ -638,6 +686,7 @@ async function viewerMsg(m) {
       backToCode('Erro na ligação (' + e.message + ').');
     }
   } else if (m.type === 'CANDIDATE' && vRemote && p.connectionId === vRemote.cid && p.candidate && p.candidate.candidate) {
+    vRemote.rk.add(candKind(p.candidate.candidate));
     if (vPc && vPc.remoteDescription) vPc.addIceCandidate(p.candidate).catch(() => {});
     else vPending.push(p.candidate);
   } else if (m.type === 'LEAVE' && vRemote && m.src === vRemote.src) {
@@ -748,11 +797,12 @@ async function updateInfo() {
   $('qInfo').textContent = d.w ? d.w + '×' + d.h + ' · ' + d.fps + ' fps' : '…';
   const v = $('video'), now = Date.now(), w = vWatch || {};
   if (!vRemote || !vRemote.accepted) return;
+  if (d.ice === 'connected' || d.ice === 'completed') { vRemote.ever = true; if (!w.connectedAt) w.connectedAt = now; }
   if (d.bytes > 0 && !w.bytesAt) w.bytesAt = now;
   // 1) Ligação não passa
   if (!w.connectedAt && now - w.start > 15000 && !w.warnedNet) {
     w.warnedNet = true;
-    vToast('A ligação não está a passar. No PC, abre “Ligar entre redes diferentes” e junta um servidor TURN grátis (vê o guia). Em alternativa, põe os dois aparelhos na mesma rede.');
+    vToast('A ligação não está a passar. ' + netReason(vRemote.lk, vRemote.rk));
   }
   // 2) Chegam dados mas nenhuma imagem é descodificada -> este formato não funciona neste ecrã
   if (w.bytesAt && d.frames === 0 && now - w.bytesAt > 5000 && d.bytes > 30000 && !w.decodeFail) {
@@ -802,7 +852,8 @@ function renderDiag(d) {
     '<b>Ligação:</b> <span class="' + iceCls + '">' + richText(iceTxt) + '</span>' + (d.route ? ' · ' + d.route : '') + '<br>' +
     '<b>Formato:</b> ' + (d.codec || '-') + (codecChoice() === 'auto' ? ' (automático)' : '') + '<br>' +
     '<b>Imagem:</b> <span class="' + imgCls + '">' + (d.frames > 0 ? d.w + '×' + d.h + ' · ' + d.fps + ' fps' : 'nenhuma ainda') + '</span><br>' +
-    '<b>Recebido:</b> ' + ((d.bytes || 0) / 1e6).toFixed(1) + ' MB · ' + (d.frames || 0) + ' imagens mostradas de ' + (d.recv || 0) + ' recebidas';
+    '<b>Recebido:</b> ' + ((d.bytes || 0) / 1e6).toFixed(1) + ' MB · ' + (d.frames || 0) + ' imagens mostradas de ' + (d.recv || 0) + ' recebidas' +
+    (vRemote ? '<br><b>Endereços:</b> este ecrã: ' + kindsText(vRemote.lk) + ' · outro aparelho: ' + kindsText(vRemote.rk) : '');
 }
 function playStream(stream) {
   const v = $('video');
@@ -855,6 +906,7 @@ $('player').addEventListener('click', e => { if (e.target.id === 'video') { $('q
 /* ---------------- PC (TRANSMITIR) ---------------- */
 let sSig = null, sPc = null, sStream = null, sDst = null, sCid = null, sPending = [], sConnected = false, sCtrl = null, sRestart = null;
 let sHeld = [], sConfirmed = false, sAuto = false, sSas = null, sAnswerFp = '', sIceTimer = null, sIceTries = 0;
+let sLK = new Set(), sRK = new Set(), sEver = false, sNoPathTimer = null;
 function showSending() {
   const hasAudio = sStream && sStream.getAudioTracks().length > 0;
   const vt = sStream && sStream.getVideoTracks()[0], st = vt ? vt.getSettings() : {};
@@ -1024,23 +1076,27 @@ async function makeOffer() {
       if (m.q) setQuality(m.q, m.fps, 'tesla');
     }
   };
+  sLK = new Set(); sRK = new Set(); sEver = false; clearTimeout(sNoPathTimer); $('lanBox').classList.add('hidden');
   pc.onicecandidate = e => {
-    if (e.candidate && e.candidate.candidate)
+    if (e.candidate && e.candidate.candidate) {
+      if (pc === sPc) sLK.add(candKind(e.candidate.candidate));
       sSig.send('CANDIDATE', sDst, { candidate: candJson(e.candidate), type: 'media', connectionId: sCid });
+    }
   };
   const hasAudio = sStream.getAudioTracks().length > 0;
   pc.oniceconnectionstatechange = () => {
     if (pc !== sPc) return;
     const s = pc.iceConnectionState;
     if (s === 'connected' || s === 'completed') {
-      sConnected = true; sIceTries = 0; clearTimeout(sIceTimer); sIceTimer = null;
+      sConnected = true; sEver = true; sIceTries = 0; clearTimeout(sIceTimer); sIceTimer = null;
+      clearTimeout(sNoPathTimer); $('lanBox').classList.add('hidden');
       if (sConfirmed) { showSending(); setBitrate(pc, brFor(sCur), sCur.fps); }
     } else if (s === 'failed') {
-      if (sConfirmed) scheduleIceRestart(0);
-      else setStatus($('sStatus'), 'A ligação não passou. Abre “Ligar entre redes diferentes” e junta um servidor TURN grátis (vê o guia), ou põe os dois aparelhos na mesma rede.', 'err');
+      if (sEver && sConfirmed) scheduleIceRestart(0);   // estava ligado e caiu: religar
+      else showNoPath(false);                            // nunca ligou: explicar porquê
     } else if (s === 'disconnected') {
       setStatus($('sStatus'), 'Ligação instável…', 'warn');
-      if (sConfirmed) scheduleIceRestart(2500);
+      if (sEver && sConfirmed) scheduleIceRestart(2500);
     }
   };
   const offer = await pc.createOffer();
@@ -1061,6 +1117,8 @@ async function senderMsg(m) {
   } else if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp) {
     try {
       sAnswerFp = sdpFingerprint(p.sdp.sdp).toUpperCase();
+      kindsFromSdp(p.sdp.sdp, sRK);
+      { const pc = sPc; clearTimeout(sNoPathTimer); sNoPathTimer = setTimeout(() => { if (pc === sPc && !sEver) showNoPath(true); }, window.NOPATH_MS || 15000); }
       await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brFor(sCur), !sAdapt), OPUS_HQ) });
       for (const c of sPending) await sPc.addIceCandidate(c).catch(() => {});
       sPending = [];
@@ -1072,6 +1130,7 @@ async function senderMsg(m) {
       }
     } catch (e) { stopSending('O ecrã recusou a ligação (' + e.message + ').', 'err'); }
   } else if (m.type === 'CANDIDATE' && p.connectionId === sCid && p.candidate && p.candidate.candidate) {
+    sRK.add(candKind(p.candidate.candidate));
     if (sPc.remoteDescription) sPc.addIceCandidate(p.candidate).catch(() => {});
     else sPending.push(p.candidate);
   } else if (m.type === 'EXPIRE' && m.src === sDst && !sConnected) {
@@ -1081,6 +1140,45 @@ async function senderMsg(m) {
     else if (p.restart && sStream) restartPeer(p.codec);
     else stopSending('O ecrã fechou a ligação.', 'warn');
   }
+}
+
+/* Os dois aparelhos nunca se chegaram a ver: mostrar o motivo provável e a solução */
+function showNoPath(stillTrying) {
+  if (!sPc) return;
+  setStatus($('sStatus'), (stillTrying ? 'Ainda não ligou (continua a tentar). ' : 'Os aparelhos não se conseguiram ligar. ') + netReason(sLK, sRK), stillTrying ? 'warn' : 'err');
+  $('lanInfo').textContent = 'Endereços — este PC: ' + kindsText(sLK) + ' · outro aparelho: ' + kindsText(sRK);
+  $('lanBox').classList.remove('hidden');
+  window.__noPath = netReason(sLK, sRK);
+}
+/* "Ligação na mesma rede": o Chrome esconde o endereço local do PC (mDNS) a não ser que a página tenha
+   permissão de microfone. Pedimos a permissão e desligamos o microfone logo a seguir: nunca é usado. */
+async function lanPermission() {
+  try { const st = await navigator.permissions.query({ name: 'microphone' }); return st.state; } catch (e) { return 'unknown'; }
+}
+async function enableLan() {
+  try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); store('vx-lan', '1'); return true; }
+  catch (e) { return false; }
+}
+async function lanRetry() {
+  const ok = await enableLan();
+  if (!ok) { setStatus($('sStatus'), 'Sem essa permissão não dá para ativar a ligação na mesma rede. (O microfone nunca é usado: é desligado logo a seguir.)', 'err'); return; }
+  renderLan();
+  if (sStream && sSig) retryConnection();
+  else setStatus($('sStatus'), '✔ Ligação na mesma rede ativada. Agora carrega em Começar.', 'ok');
+}
+// Nova tentativa, com ligação nova (volta a pedir Aceitar e o código de verificação)
+function retryConnection() {
+  if (sPc) { sSig.send('LEAVE', sDst, { type: 'media', connectionId: sCid }); try { sPc.close(); } catch (e) {} }
+  sPc = null; sCtrl = null; sPending = []; sConnected = false; clearTimeout(sIceTimer); sIceTimer = null; sIceTries = 0;
+  sCid = 'mc_' + rnd(12); sRestart = null; sAuto = false;
+  $('verify').classList.add('hidden');
+  setTimeout(makeOffer, 800);   // dá tempo ao ecrã de destino de voltar ao código
+}
+async function renderLan() {
+  const st = await lanPermission();
+  const on = st === 'granted';
+  document.querySelectorAll('.lanState').forEach(e => setStatus(e, on ? '✔ Ligação na mesma rede ativada' : 'Desativada (o Chrome esconde o endereço do PC na rede local).', on ? 'ok' : ''));
+  document.querySelectorAll('.lanBtn').forEach(b => { b.textContent = on ? 'Tentar outra vez' : 'Ligação na mesma rede'; });
 }
 
 /* A ligação caiu a meio (mudaste de rede, o Wi-Fi falhou, o carro saiu do alcance…): renegociar o
@@ -1164,6 +1262,7 @@ function stopSending(msg, kind) {
   if (sSig && sDst && sPc) sSig.send('LEAVE', sDst, { type: 'media', connectionId: sCid });
   if (sPc) { try { sPc.close(); } catch (e) {} sPc = null; }
   sCtrl = null; sHeld = []; sConfirmed = false; clearTimeout(sIceTimer); sIceTimer = null; sIceTries = 0;
+  clearTimeout(sNoPathTimer); $('lanBox').classList.add('hidden');
   $('verify').classList.add('hidden');
   if (sSig) { sSig.close(); sSig = null; }
   if (sStream) { sStream.getTracks().forEach(t => t.stop()); sStream = null; }
@@ -1184,7 +1283,11 @@ function netBox(p) {
     '<label>Palavra-passe</label><input class="tPass" type="password" autocomplete="off">' +
     '<div class="row"><button class="btn ghost" onclick="saveTurn(\'' + p + '\')">Guardar e testar</button>' +
     '<button class="btn ghost" onclick="clearTurn(\'' + p + '\')">Apagar</button></div>' +
-    '<div class="tStat"><div class="status"></div></div></details>';
+    '<div class="tStat"><div class="status"></div></div>' +
+    (p === 's' ? '<hr style="border-color:#2a3350"><b>Mesmo Wi-Fi e não liga?</b> Ativa a ligação na mesma rede (vê a explicação ao carregar).' +
+      '<div class="row"><button class="btn ghost lanBtn" onclick="lanRetry()">Ligação na mesma rede</button></div><div class="status lanState"></div>' : '') +
+    '<hr style="border-color:#2a3350"><b>Testar a rede deste aparelho</b>' +
+    '<div class="row"><button class="btn ghost tNet" onclick="testNet(\'' + p + '\')">Testar a rede</button></div><div class="tRes"></div></details>';
 }
 function netEl(p, cls) { return document.querySelector('#net-' + p + ' .' + cls + (cls === 'tStat' ? ' .status' : '')); }
 function renderNet() {
@@ -1228,7 +1331,45 @@ function testTurn(cfg, ms) {
   });
 }
 document.querySelectorAll('.netph').forEach(e => { e.outerHTML = netBox(e.dataset.p); });
-renderNet();
+renderNet(); renderLan();
+
+// Teste de rede: tenta obter cada tipo de endereço, um servidor de cada vez
+function gatherKinds(servers, relayOnly, ms) {
+  return new Promise(res => {
+    const k = new Set(); let pc, done = false;
+    const end = () => { if (done) return; done = true; try { pc.close(); } catch (e) {} res(k); };
+    try {
+      pc = new RTCPeerConnection({ iceServers: servers, iceTransportPolicy: relayOnly ? 'relay' : 'all' });
+      pc.createDataChannel('t');
+      pc.onicecandidate = e => { if (e.candidate && e.candidate.candidate) { k.add(candKind(e.candidate.candidate)); if (relayOnly && k.has('relay')) end(); } else if (!e.candidate) end(); };
+      pc.createOffer().then(o => pc.setLocalDescription(o)).catch(end);
+    } catch (e) { end(); return; }
+    setTimeout(end, ms || 7000);
+  });
+}
+async function testNet(p) {
+  const box = document.querySelector('#net-' + p + ' .tRes');
+  box.innerHTML = 'A testar a rede (até 8 s)…';
+  const pj = PUBLIC_ICE[1], cred = { username: pj.username, credential: pj.credential };
+  const tests = [
+    ['Rede local', gatherKinds([], false, 3000), k => k.has('host') ? [true, 'endereço visível'] : k.has('mdns') ? [true, 'endereço escondido pelo browser (mDNS)'] : [false, 'sem rede']],
+    ['Internet (STUN Google)', gatherKinds([{ urls: 'stun:stun.l.google.com:19302' }], false), k => [k.has('srflx'), k.has('srflx') ? 'responde' : 'não responde']],
+    ['Internet (STUN Cloudflare)', gatherKinds([{ urls: 'stun:stun.cloudflare.com:3478' }], false), k => [k.has('srflx'), k.has('srflx') ? 'responde' : 'não responde']],
+    ['Retransmissão grátis PeerJS (UDP)', gatherKinds([Object.assign({ urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'] }, cred)], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']],
+    ['Retransmissão grátis PeerJS (TCP)', gatherKinds([Object.assign({ urls: ['turn:eu-0.turn.peerjs.com:3478?transport=tcp', 'turn:us-0.turn.peerjs.com:3478?transport=tcp'] }, cred)], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']]
+  ];
+  const mine = myTurn();
+  if (mine) tests.push(['O teu servidor TURN', gatherKinds([mine], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']]);
+  const res = await Promise.all(tests.map(t => t[1]));
+  const lines = tests.map((t, i) => { const [ok, txt] = t[2](res[i]); return { ok, html: richText((ok ? '✔ ' : '✖ ') + t[0] + ': ' + txt) }; });
+  const anyRelay = res.slice(3).some(k => k.has('relay'));
+  const mdns = res[0].has('mdns') && !res[0].has('host');
+  let tip = anyRelay ? 'A retransmissão funciona nesta rede: mesmo que os aparelhos não se vejam diretamente, deve ligar.'
+    : 'Nenhum servidor de retransmissão respondeu nesta rede. Só liga se os aparelhos se virem diretamente; se não ligar, junta um servidor TURN teu (acima).';
+  if (mdns && p === 's') tip += ' No mesmo Wi-Fi, se não ligar, usa “Ligação na mesma rede”.';
+  box.innerHTML = lines.map(l => l.html).join('<br>') + '<br><i>' + richText(tip) + '</i>';
+  window.__netTest = lines.map(l => l.ok);
+}
 
 /* ---------------- iPhone / iPad ---------------- */
 const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
