@@ -1,0 +1,3 @@
+# VexelCast: projeto pessoal, não indexar
+User-agent: *
+Disallow: /

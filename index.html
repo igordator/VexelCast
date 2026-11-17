@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TeslaCast</title>
+<title>VexelCast</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Projeto pessoal e independente de partilha de ecrã para outro browser (carro, TV, tablet…).">
 <meta name="theme-color" content="#0f172a">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
@@ -13,6 +15,7 @@
     --red: #e82127; --blue: #3b82f6; --green: #22c55e; --amber: #f59e0b;
   }
   * { box-sizing: border-box; }
+  .hidden { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   .screen { display: none; min-height: 100%; padding: 32px 20px; }
@@ -29,11 +32,11 @@
   .choice.pc { background: linear-gradient(135deg, #3b82f6, #1e3a8a); }
   .emoji { display: block; margin-bottom: 8px; line-height: 1; }
   .emoji .ic { width: 46px; height: 46px; }
-  /* Ícones desenhados (SVG): não dependem das fontes do browser do Tesla,
+  /* Ícones desenhados (SVG): não dependem das fontes de alguns browsers (ex.: carros Tesla),
      que não tem emojis nem símbolos como ⛶ (apareciam como um retângulo vazio). */
   .ic { width: 1.15em; height: 1.15em; vertical-align: -0.2em; display: inline-block; flex: none; }
-  .code { font-size: 120px; font-weight: 800; letter-spacing: 18px; color: white;
-    background: var(--card); border: 3px solid var(--red); border-radius: 24px; padding: 10px 34px 10px 52px;
+  .code { font-size: min(110px, 10.5vw); font-weight: 800; letter-spacing: 8px; white-space: nowrap; color: white;
+    background: var(--card); border: 3px solid var(--red); border-radius: 24px; padding: 10px 28px 10px 36px;
     font-variant-numeric: tabular-nums; }
   .card { background: var(--card); border-radius: 20px; padding: 26px; width: 100%; max-width: 520px;
     display: flex; flex-direction: column; gap: 16px; }
@@ -83,6 +86,20 @@
   .vset select { font-size: 16px; padding: 8px 10px; width: auto; }
   .fsbox { display: flex; flex-direction: column; align-items: center; gap: 8px; }
   .fsbox small { color: var(--muted); font-size: 14px; max-width: 520px; text-align: center; }
+  .sas { font-size: 64px; font-weight: 800; letter-spacing: 14px; font-variant-numeric: tabular-nums; color: #fff;
+    background: #0b1020; border: 3px solid var(--blue); border-radius: 18px; padding: 6px 18px 6px 32px; display: inline-block; }
+  #ask { position: fixed; inset: 0; background: rgba(0,0,0,.82); display: flex; align-items: center; justify-content: center; z-index: 50; }
+  #ask .box { background: var(--card); border: 2px solid #3b4566; border-radius: 22px; padding: 28px; width: min(560px, 92vw);
+    display: flex; flex-direction: column; gap: 16px; align-items: center; text-align: center; }
+  #ask h2 { font-size: 28px; }
+  #ask .row { display: flex; gap: 14px; width: 100%; }
+  #ask .row .btn { flex: 1; font-size: 24px; padding: 18px; }
+  .verify { border: 2px solid var(--blue); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; background: rgba(59,130,246,.08); }
+  .verify .row { display: flex; gap: 10px; width: 100%; }
+  .verify .row .btn { flex: 1; }
+  #waitOv { font-size: 24px; }
+  footer.legal { margin-top: 26px; color: var(--muted); font-size: 13px; text-align: center; max-width: 640px; line-height: 1.5; }
+  footer.legal a { color: #93c5fd; }
   #preview { width: 100%; max-width: 520px; border-radius: 14px; background: black; display: none; }
 </style>
 </head>
@@ -90,29 +107,35 @@
 
 <!-- ECRÃ INICIAL -->
 <section id="home" class="screen on">
-  <h1>Tesla<span>Cast</span></h1>
-  <p>Mostra o ecrã e o som do teu PC no ecrã do Tesla.</p>
+  <h1>Vexel<span>Cast</span></h1>
+  <p>Mostra o ecrã e o som do teu PC noutro ecrã: carro, TV, tablet ou outro computador.</p>
   <div class="choices">
     <button class="choice tesla" onclick="startViewer()">
-      <span class="emoji"><i data-ic="car"></i></span>Estou no Tesla
+      <span class="emoji"><i data-ic="tv"></i></span>Ver neste ecrã
       <small>Mostrar o código e receber a imagem</small>
     </button>
     <button class="choice pc" onclick="show('sender')">
       <span class="emoji"><i data-ic="laptop"></i></span>Transmitir deste PC
-      <small>Partilhar o ecrã/separador com o carro</small>
+      <small>Partilhar o ecrã/separador com outro ecrã</small>
     </button>
   </div>
-  <p style="font-size:14px">Usa só com o carro estacionado.</p>
+  <p style="font-size:14px">Num carro, usa só com o veículo estacionado.</p>
+  <footer class="legal">
+    Projeto pessoal e independente. <b>Não é afiliado, associado, autorizado nem aprovado por nenhum fabricante</b>
+    (incluindo a Tesla, Inc.). Nomes como “Tesla” são marcas dos seus titulares, usadas só para indicar compatibilidade.
+    Num carro, usa apenas com o veículo estacionado. És responsável pelo conteúdo que transmites.
+    Não guardamos dados. <a href="termos.html">Termos de utilização e privacidade</a>
+  </footer>
 </section>
 
 <!-- TESLA: CÓDIGO -->
 <section id="viewer" class="screen">
   <h2>Escreve este código no PC ou no telemóvel</h2>
-  <div class="code" id="myCode">······</div>
+  <div class="code" id="myCode">····-····</div>
   <div class="status" id="vStatus">A ligar ao servidor…</div>
   <div class="fsbox" id="fsBox">
-    <button class="btn go" id="fsBtn" onclick="openFullscreenTrick()"><i data-ic="full"></i> Abrir em ecrã inteiro</button>
-    <small>Abre esta página sem a barra do browser (pelo YouTube). Se aparecer o YouTube, carrega em <b>“Ir para o site”</b>. Faz isto antes de ligares o PC.</small>
+    <button class="btn go" id="fsBtn" onclick="openFullscreen()"><i data-ic="full"></i> Abrir em ecrã inteiro</button>
+    <small>Faz isto antes de ligares o PC. Em browsers que não deixam (por exemplo, nos carros Tesla) abre pelo YouTube: se aparecer o YouTube, carrega em <b>“Ir para o site”</b>.</small>
   </div>
   <div class="vset">
     <label for="codecSel">Formato de vídeo:</label>
@@ -124,14 +147,15 @@
     </select>
   </div>
   <button class="btn ghost" onclick="newCode()">Gerar outro código</button>
+  <footer class="legal">Projeto independente, sem ligação a nenhum fabricante. Num carro, usa só estacionado. <a href="termos.html">Termos e privacidade</a></footer>
 </section>
 
 <!-- PC: TRANSMITIR -->
 <section id="sender" class="screen">
-  <h2><i data-ic="laptop"></i> Transmitir para o Tesla</h2>
+  <h2><i data-ic="laptop"></i> Transmitir para outro ecrã</h2>
   <div class="card">
-    <label for="code">Código que aparece no Tesla</label>
-    <input id="code" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="off">
+    <label for="code">Código que aparece no ecrã de destino</label>
+    <input id="code" maxlength="9" placeholder="K7P3-X9QM" autocomplete="off" autocapitalize="characters" spellcheck="false" oninput="this.value = fmtCode(this.value)">
     <div class="row2">
       <div>
         <label for="quality">Qualidade</label>
@@ -151,24 +175,51 @@
         </select>
       </div>
     </div>
-    <div class="hint">Podes mudar a qualidade a meio da transmissão, aqui ou no ecrã do Tesla (<i data-ic="gear"></i>).</div>
+    <div class="hint">Podes mudar a qualidade a meio da transmissão, aqui ou no ecrã de destino (<i data-ic="gear"></i>).</div>
     <button class="btn go" id="goBtn" onclick="startSending()"><i data-ic="play"></i> Começar a transmitir</button>
     <button class="btn stop" id="stopBtn" onclick="stopSending()" style="display:none"><i data-ic="stop"></i> Parar</button>
     <div class="status" id="sStatus">À espera</div>
+    <div class="verify hidden" id="verify">
+      <div><b>Código de verificação</b></div>
+      <div class="sas" id="sasPc">0000</div>
+      <div style="color:var(--muted)">Confirma que o ecrã de destino mostra <b>exatamente</b> estes 4 números e que lá carregaste em <b>Aceitar</b>. Só depois disso a tua imagem começa a ser enviada.</div>
+      <div class="row">
+        <button class="btn stop" id="verifyNo" onclick="confirmSend(false)">Não é igual</button>
+        <button class="btn go" id="verifyYes" onclick="confirmSend(true)">É igual, começar</button>
+      </div>
+    </div>
   </div>
   <video id="preview" muted playsinline></video>
   <div class="tips">
     <b>Dica 1:</b> para ver um vídeo do browser, escolhe <b>“Separador do Chrome/Edge”</b> e deixa ligado
     <b>“Partilhar também o áudio do separador”</b>. O som deixa de sair no PC e sai só no carro.<br>
     <b>Dica 2:</b> para mostrar o PC inteiro, escolhe <b>“Ecrã inteiro”</b> e liga <b>“Partilhar áudio do sistema”</b>.<br>
-    <b>Netflix, Disney+, Prime…</b> aparecem a preto (proteção DRM). Esses abre-os diretamente no browser do Tesla.
+    <b>Netflix, Disney+, Prime…</b> aparecem a preto (proteção DRM). Esses abre-os diretamente no browser do ecrã de destino.
   </div>
   <button class="btn ghost" onclick="location.href=location.pathname"><i data-ic="back"></i> Voltar</button>
+  <footer class="legal">Ao transmitir, confirmas que tens direito a mostrar esse conteúdo e, se o destino for um carro, que está estacionado.
+    Projeto independente, sem ligação a nenhum fabricante. <a href="termos.html">Termos e privacidade</a></footer>
 </section>
+
+<!-- TESLA: PEDIDO DE LIGAÇÃO -->
+<div id="ask" class="hidden">
+  <div class="box">
+    <h2>Um aparelho quer ligar-se a este ecrã</h2>
+    <div style="color:var(--muted); font-size:18px">Código de verificação</div>
+    <div class="sas" id="sasTesla">0000</div>
+    <div style="color:var(--muted); font-size:17px">Só aceites se o PC ou o telemóvel mostrar <b>estes mesmos 4 números</b>. Se não estiveres à espera de ninguém, recusa.</div>
+    <div class="row">
+      <button class="btn stop" id="askNo">Recusar</button>
+      <button class="btn go" id="askYes">Aceitar</button>
+    </div>
+    <div style="color:var(--muted); font-size:14px" id="askTimer"></div>
+  </div>
+</div>
 
 <!-- TESLA: LEITOR -->
 <div id="player">
   <video id="video" autoplay playsinline muted></video>
+  <div class="overlay" id="waitOv" style="display:none"></div>
   <div class="overlay" id="unmute" onclick="unmute()"><i data-ic="speaker"></i> Toca aqui para ligar o som</div>
   <div class="bar" id="bar">
     <span id="qInfo">…</span>
@@ -189,12 +240,12 @@
 
 <script>
 /* =====================================================================
-   TeslaCast — sinalização pelo servidor público gratuito do PeerJS
+   VexelCast — sinalização pelo servidor público gratuito do PeerJS
    (0.peerjs.com), falando o protocolo diretamente. A app Android usa
-   exatamente as mesmas mensagens, por isso PC, Android e Tesla falam
+   exatamente as mesmas mensagens, por isso PC, Android e o ecrã de destino falam
    todos a mesma "língua".
    ===================================================================== */
-const PREFIX = 'tcast-';
+const PREFIX = 'vexelcast-';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 const ICE = params.has('noice') ? [] : [
@@ -214,7 +265,8 @@ const ICONS = {
   warn: '<path d="M12 3.5l9 16H3z"/><path d="M12 10v4M12 17v.01"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
   car: '<path d="M3 16v-2.5l2-5.5C5.5 6.8 6.5 6 7.8 6h8.4c1.3 0 2.3.8 2.8 2l2 5.5V16"/><path d="M3 16h18v2.5h-3V16M6 16v2.5H3V16"/><circle cx="7.5" cy="13" r="1.1"/><circle cx="16.5" cy="13" r="1.1"/>',
-  laptop: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>'
+  laptop: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+  tv: '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/>'
 };
 function ic(n) {
   return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[n] || '') + '</svg>';
@@ -233,7 +285,34 @@ function show(id) {
 }
 function setStatus(el, text, kind) { el.innerHTML = richText(text); el.className = 'status ' + (kind || ''); }
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
-function randCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
+/* Códigos de 8 caracteres (sem 0/O, 1/I/L para não se confundirem): mais de 850 mil milhões de
+   combinações. O servidor nunca deixa dois aparelhos ligados terem o mesmo código e cada
+   aparelho guarda os que já usou para nunca os repetir. */
+const CODE_ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const CODE_RE = /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}$/;
+function normCode(t) { return String(t || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); }
+function fmtCode(c) { c = normCode(c); return c.length > 4 ? c.slice(0, 4) + '-' + c.slice(4, 8) : c; }
+function randCode() {
+  let used = []; try { used = JSON.parse(localStorage.getItem('vx-used') || '[]'); } catch (e) {}
+  let c;
+  do {
+    c = ''; for (const x of crypto.getRandomValues(new Uint8Array(8))) c += CODE_ABC[x % CODE_ABC.length];
+  } while (used.includes(c));
+  used.push(c); if (used.length > 500) used = used.slice(-500);
+  try { localStorage.setItem('vx-used', JSON.stringify(used)); } catch (e) {}
+  return fmtCode(c);
+}
+// Guardado só nesta sessão (separador): cada vez que abres a página há um código novo
+function sstore(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v); } catch (e) { return null; } }
+/* Código de verificação (como no emparelhamento Bluetooth): calculado a partir das "impressões
+   digitais" de encriptação dos DOIS lados da ligação. Se alguém se meter no meio, os números
+   dos dois aparelhos ficam diferentes. */
+function sdpFingerprint(sdp) { return ((sdp || '').match(/a=fingerprint:\S+ ([0-9A-Fa-f:]+)/) || [])[1] || ''; }
+async function sasFrom(sdpA, sdpB) {
+  const parts = [sdpFingerprint(sdpA).toUpperCase(), sdpFingerprint(sdpB).toUpperCase()].sort();
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(parts.join('|'))));
+  return String(((h[0] << 8) | h[1]) % 10000).padStart(4, '0');
+}
 function rnd(n) {
   const c = 'abcdefghijklmnopqrstuvwxyz0123456789'; let s = '';
   for (const x of crypto.getRandomValues(new Uint8Array(n))) s += c[x % c.length];
@@ -269,12 +348,21 @@ class Signal {
 let vSig = null, vPc = null, vRemote = null, vPending = [], vStream = null, vCtrl = null, vQ = null, vInfoTimer = null;
 const Q_LABEL = { 360: '360p', 540: '540p', 720: '720p', 1080: '1080p', max: 'Máxima' };
 
-/* --- Formato de vídeo (codec): quem escolhe é o Tesla, porque é ele que tem de o descodificar.
-   Algumas versões do software do Tesla não mostram H.264 por WebRTC (ecrã preto), por isso o
+/* --- Formato de vídeo (codec): quem escolhe é o ecrã de destino, porque é ele que tem de o descodificar.
+   Algumas versões do software dos carros Tesla não mostram H.264 por WebRTC (ecrã preto), por isso o
    "Automático" começa em VP8 e, se não aparecer imagem, troca sozinho para o seguinte. --- */
 const CODECS = ['vp8', 'h264', 'vp9'];
 const CODEC_LABEL = { auto: 'Automático', vp8: 'VP8', h264: 'H.264', vp9: 'VP9' };
-let vCodec = null, vFailed = [], vWatch = null, vDiagForced = false, vDiagMsg = '';
+let vCodec = null, vFailed = [], vWatch = null, vDiagForced = false, vDiagMsg = '', vExpect = null, vAskTimer = null;
+function askUser(code, onYes, onNo) {
+  $('sasTesla').textContent = code;
+  $('ask').classList.remove('hidden');
+  let left = window.ASK_SECONDS || 90;
+  const tick = () => { $('askTimer').textContent = 'Recusa automaticamente daqui a ' + left + ' s'; if (left-- <= 0) onNo('Ninguém aceitou a tempo.'); };
+  clearInterval(vAskTimer); tick(); vAskTimer = setInterval(tick, 1000);
+  $('askYes').onclick = onYes; $('askNo').onclick = () => onNo('Ligação recusada.');
+}
+function hideAsk() { clearInterval(vAskTimer); vAskTimer = null; $('ask').classList.add('hidden'); }
 function codecChoice() { const c = store('tcast-codec'); return CODECS.includes(c) ? c : 'auto'; }
 function codecToUse() {
   const c = codecChoice();
@@ -312,6 +400,13 @@ function preferInSdp(sdp, want) {
   return lines.join('\r\n');
 }
 function toggleDiag() { vDiagForced = !$('diag').classList.contains('on'); $('diag').classList.toggle('on', vDiagForced); flashBar(); }
+async function openFullscreen() {
+  const el = document.documentElement;
+  try { const r = (el.requestFullscreen || el.webkitRequestFullscreen).call(el); if (r && r.then) await r; } catch (e) {}
+  await new Promise(r => setTimeout(r, 300));
+  if (document.fullscreenElement || document.webkitFullscreenElement) return;
+  openFullscreenTrick();   // ex.: browser do Tesla
+}
 function openFullscreenTrick() {
   const keep = ['server', 'noice'].filter(k => params.has(k)).map(k => '&' + k + (params.get(k) ? '=' + encodeURIComponent(params.get(k)) : '')).join('');
   const target = location.origin + location.pathname + '?tesla&fs=1' + keep;
@@ -324,12 +419,12 @@ function vToast(msg) {
 
 function startViewer(forceNew) {
   show('viewer');
-  let code = forceNew ? null : store('tcast-code');
-  if (!code || !/^\d{6}$/.test(code)) { code = randCode(); store('tcast-code', code); }
+  let code = forceNew ? null : sstore('tcast-code');
+  if (!code || !CODE_RE.test(normCode(code))) { code = randCode(); sstore('tcast-code', code); }
   $('myCode').textContent = code;
   setStatus($('vStatus'), 'A ligar ao servidor…');
   if (vSig) vSig.close();
-  vSig = new Signal(PREFIX + code, {
+  vSig = new Signal(PREFIX + normCode(code), {
     open: () => { if (!vPc) setStatus($('vStatus'), 'Pronto ✔ À espera do PC/telemóvel…', 'ok'); },
     lost: () => { if (!vPc) setStatus($('vStatus'), 'Sem ligação ao servidor, a tentar outra vez… (o carro tem internet?)', 'warn'); },
     error: t => { if (t === 'id-taken') startViewer(true); else setStatus($('vStatus'), 'Erro do servidor. Recarrega a página.', 'err'); },
@@ -341,17 +436,21 @@ function newCode() { startViewer(true); }
 async function viewerMsg(m) {
   const p = m.payload || {};
   if (m.type === 'OFFER' && p.type === 'media' && p.sdp && p.sdp.sdp) {
+    // religar pedido por este ecrã (troca de formato): aceita sem perguntar outra vez
+    const auto = !!(vExpect && vExpect.src === m.src && Date.now() < vExpect.until);
+    vExpect = null;
     closeViewerPc();
-    const remote = vRemote = { src: m.src, cid: p.connectionId };
+    const remote = vRemote = { src: m.src, cid: p.connectionId, accepted: false, sas: null };
+    const held = [];
     vPending = [];
     vStream = new MediaStream();
     const pc = vPc = new RTCPeerConnection({ iceServers: ICE });
     pc.ontrack = e => {
       if (pc !== vPc) return;
       vStream.addTrack(e.track);
-      playStream(vStream);
+      if (remote.accepted) playStream(vStream);
     };
-    // Canal de controlo (só o PC o abre): permite mudar a qualidade a partir do Tesla
+    // Canal de controlo (só o PC o abre): permite mudar a qualidade a partir do ecrã de destino
     pc.ondatachannel = e => {
       if (pc !== vPc || e.channel.label !== 'ctrl') return;
       vCtrl = e.channel;
@@ -362,11 +461,13 @@ async function viewerMsg(m) {
       vCtrl.onclose = () => { $('qBtn').style.display = 'none'; $('qPanel').classList.remove('on'); };
     };
     pc.onicecandidate = e => {
-      if (e.candidate && e.candidate.candidate)
-        vSig.send('CANDIDATE', remote.src, { candidate: candJson(e.candidate), type: 'media', connectionId: remote.cid });
+      if (!(e.candidate && e.candidate.candidate)) return;
+      const c = { candidate: candJson(e.candidate), type: 'media', connectionId: remote.cid };
+      // até carregares em Aceitar, o ecrã de destino não diz a ninguém como chegar até ele
+      if (remote.accepted) vSig.send('CANDIDATE', remote.src, c); else held.push(c);
     };
     pc.oniceconnectionstatechange = () => {
-      if (pc !== vPc) return;
+      if (pc !== vPc || !remote.accepted) return;
       const s = pc.iceConnectionState;
       if (s === 'connected' || s === 'completed') { setStatus($('vStatus'), 'Ligado ✔', 'ok'); if (vWatch && !vWatch.connectedAt) vWatch.connectedAt = Date.now(); }
       else if (s === 'failed') backToCode('A ligação falhou.');
@@ -383,7 +484,26 @@ async function viewerMsg(m) {
       const ans = await pc.createAnswer();
       const sdp = preferInSdp(ans.sdp, vCodec);
       await pc.setLocalDescription({ type: 'answer', sdp });
-      vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp }, type: 'media', connectionId: remote.cid });
+      const code = remote.sas = await sasFrom(p.sdp.sdp, sdp);
+      if (pc !== vPc) return;
+      const accept = () => {
+        if (pc !== vPc || remote.accepted) return;
+        remote.accepted = true; hideAsk();
+        vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp }, type: 'media', connectionId: remote.cid });
+        held.forEach(c => vSig.send('CANDIDATE', remote.src, c)); held.length = 0;
+        if (vWatch) vWatch.start = Date.now();
+        setStatus($('vStatus'), 'Aceite. À espera da confirmação no PC/telemóvel…', 'warn');
+        $('waitOv').innerHTML = 'À espera que confirmes o código <b>' + code + '</b><br>no PC ou no telemóvel…';
+        $('waitOv').style.display = 'block';
+        playStream(vStream);
+      };
+      const decline = why => {
+        if (pc !== vPc) return;
+        hideAsk();
+        vSig.send('LEAVE', remote.src, { type: 'media', connectionId: remote.cid, declined: true });
+        backToCode(why || 'Ligação recusada.');
+      };
+      if (auto) accept(); else { setStatus($('vStatus'), 'Pedido de ligação: confirma o código de verificação', 'warn'); askUser(code, accept, decline); }
     } catch (e) {
       backToCode('Erro na ligação (' + e.message + ').');
     }
@@ -397,6 +517,8 @@ async function viewerMsg(m) {
 
 function closeViewerPc() {
   if (vPc) { try { vPc.close(); } catch (e) {} }
+  hideAsk();
+  $('waitOv').style.display = 'none';
   vWatch = null;
   vPc = null; vRemote = null; vPending = []; vCtrl = null; vQ = null;
   $('qBtn').style.display = 'none'; $('qPanel').classList.remove('on');
@@ -449,17 +571,24 @@ async function updateInfo() {
   window.__lastDiag = d;
   $('qInfo').textContent = d.w ? d.w + '×' + d.h + ' · ' + d.fps + ' fps' : '…';
   const v = $('video'), now = Date.now(), w = vWatch || {};
+  if (!vRemote || !vRemote.accepted) return;
+  if (d.bytes > 0 && !w.bytesAt) w.bytesAt = now;
   // 1) Ligação não passa
   if (!w.connectedAt && now - w.start > 15000 && !w.warnedNet) {
     w.warnedNet = true;
-    vToast('A ligação não está a passar. Põe o Tesla no hotspot do telemóvel (ou noutro Wi-Fi) e tenta outra vez.');
+    vToast('A ligação não está a passar. Põe este aparelho no hotspot do telemóvel (ou noutro Wi-Fi) e tenta outra vez.');
   }
-  // 2) Chegam dados mas nenhuma imagem é descodificada -> este formato não funciona neste Tesla
-  if (w.connectedAt && d.frames === 0 && now - w.connectedAt > 5000 && d.bytes > 30000 && !w.decodeFail) {
+  // 2) Chegam dados mas nenhuma imagem é descodificada -> este formato não funciona neste ecrã
+  if (w.bytesAt && d.frames === 0 && now - w.bytesAt > 5000 && d.bytes > 30000 && !w.decodeFail) {
     w.decodeFail = true; decodeFailed();
   }
   // 3) Imagem descodificada: guardar o formato que funciona
-  if (d.frames > 0 && !w.framesAt) { w.framesAt = now; if (codecChoice() === 'auto') store('tcast-codec-ok', vCodec); }
+  if (d.frames > 0 && !w.framesAt) {
+    w.framesAt = now; if (codecChoice() === 'auto') store('tcast-codec-ok', vCodec);
+    $('waitOv').style.display = 'none';
+    setStatus($('vStatus'), 'Ligado ✔', 'ok');
+    if (v.srcObject && v.srcObject.getAudioTracks().length && v.muted) { $('unmute').innerHTML = richText('🔊 Toca aqui para ligar o som'); $('unmute').style.display = 'block'; }
+  }
   // 4) Imagem a chegar mas o vídeo está parado (autoplay bloqueado)
   if (d.frames > 0 && v.paused) { $('unmute').innerHTML = richText('▶ Toca aqui para ver'); $('unmute').style.display = 'block'; }
   renderDiag(d);
@@ -473,9 +602,10 @@ function decodeFailed() {
   if (!vFailed.includes(bad)) vFailed.push(bad);
   if (store('tcast-codec-ok') === bad) store('tcast-codec-ok', '');
   const next = CODECS.find(x => !vFailed.includes(x));
-  if (!next) { vToast('Nenhum formato de vídeo funcionou neste Tesla. Diz-me o que aparece neste painel.'); vFailed = []; return; }
+  if (!next) { vToast('Nenhum formato de vídeo funcionou neste ecrã. Diz-me o que aparece neste painel.'); vFailed = []; return; }
   vToast('A imagem não aparece com ' + CODEC_LABEL[bad] + '. A tentar com ' + CODEC_LABEL[next] + '…');
-  // pedir ao PC/telemóvel para religar (o Tesla vai responder com o novo formato)
+  // pedir ao PC/telemóvel para religar (o ecrã de destino vai responder com o novo formato)
+  if (vRemote) vExpect = { src: vRemote.src, until: Date.now() + 30000 };
   if (vSig && vRemote) vSig.send('LEAVE', vRemote.src, { type: 'media', connectionId: vRemote.cid, restart: true, codec: next });
 }
 function renderDiag(d) {
@@ -494,7 +624,7 @@ function playStream(stream) {
   $('unmute').innerHTML = richText('🔊 Toca aqui para ligar o som');
   $('player').classList.add('on');
   if (!vInfoTimer) vInfoTimer = setInterval(updateInfo, 1000);
-  $('unmute').style.display = (stream.getAudioTracks().length && v.muted) ? 'block' : 'none';
+  $('unmute').style.display = 'none';
   v.play().catch(() => {});
   flashBar();
 }
@@ -512,7 +642,7 @@ function goFull() {
     for (const t of tries) { try { const r = t(); if (r && r.then) await r; if (document.fullscreenElement || document.webkitFullscreenElement) return; } catch (e) {} }
     setTimeout(() => {
       if (!document.fullscreenElement && !document.webkitFullscreenElement)
-        vToast('O browser do Tesla não deixa pôr esta página em ecrã inteiro assim. Fecha (✕ Fechar) e, no ecrã do código, carrega em “⛶ Abrir em ecrã inteiro”.');
+        vToast('Este browser não deixa pôr esta página em ecrã inteiro assim. Fecha (✕ Fechar) e, no ecrã do código, carrega em “⛶ Abrir em ecrã inteiro”.');
     }, 400);
   })();
 }
@@ -538,6 +668,26 @@ $('player').addEventListener('click', e => { if (e.target.id === 'video') { $('q
 
 /* ---------------- PC (TRANSMITIR) ---------------- */
 let sSig = null, sPc = null, sStream = null, sDst = null, sCid = null, sPending = [], sConnected = false, sCtrl = null, sRestart = null;
+let sHeld = [], sConfirmed = false, sAuto = false, sSas = null;
+function showSending() {
+  const hasAudio = sStream && sStream.getAudioTracks().length > 0;
+  const vt = sStream && sStream.getVideoTracks()[0], st = vt ? vt.getSettings() : {};
+  setStatus($('sStatus'), '✔ A transmitir para o ecrã' + (hasAudio ? ' (com som)' : ' (sem som — marca a opção de áudio)') +
+    ' · ' + Q_LABEL[sCur.q] + ' ' + sCur.fps + ' fps' + (sRestart ? ' · formato mudado pelo ecrã para ' + sRestart : ''), hasAudio ? 'ok' : 'warn');
+}
+async function confirmSend(ok) {
+  $('verify').classList.add('hidden');
+  if (!sPc) return;
+  if (!ok) {
+    stopSending('Cancelado: os códigos não eram iguais. Alguém pode ter tentado ligar-se. No ecrã de destino, carrega em “Gerar outro código” e tenta outra vez.', 'err');
+    return;
+  }
+  // só agora a imagem e o som começam a ser enviados
+  for (const [snd, tr] of sHeld) { try { await snd.replaceTrack(tr); } catch (e) { console.warn('replaceTrack', e); } }
+  sConfirmed = true;
+  await setBitrate(sPc, brFor(sCur), sCur.fps);
+  if (sConnected) showSending(); else setStatus($('sStatus'), 'A ligar ao ecrã…', 'warn');
+}
 // h = altura máxima; br = bitrate máximo a 30 fps (a 60 fps usa-se 1,5×)
 const QUALITY = {
   360:  { h: 360,  br: 800000 },
@@ -578,10 +728,10 @@ async function setQuality(q, fps, from) {
   }
   if (sPc) await setBitrate(sPc, brFor(sCur), fps);
   sendState();
-  if (sConnected) {
+  if (sConnected && sConfirmed) {
     const s = vt ? vt.getSettings() : {};
     setStatus($('sStatus'), '✔ A transmitir · ' + (Q_LABEL[sCur.q]) + ' ' + fps + ' fps' +
-      (s.height ? ' (' + s.width + '×' + s.height + ')' : '') + (from === 'tesla' ? ' — mudado no Tesla' : ''), 'ok');
+      (s.height ? ' (' + s.width + '×' + s.height + ')' : '') + (from === 'tesla' ? ' — mudado no ecrã de destino' : ''), 'ok');
   }
 }
 function sendState() {
@@ -590,9 +740,10 @@ function sendState() {
 }
 
 async function startSending() {
-  const code = $('code').value.trim();
-  if (!/^\d{6}$/.test(code)) { setStatus($('sStatus'), 'O código tem 6 números.', 'err'); return; }
-  store('tcast-last', code);
+  const code = normCode($('code').value);
+  if (!CODE_RE.test(code)) { setStatus($('sStatus'), 'O código tem 8 letras e números, como aparece no ecrã de destino (ex.: K7P3-X9QM).', 'err'); return; }
+  $('code').value = fmtCode(code);
+  store('tcast-last', fmtCode(code));
   sCur = readUi();
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
     setStatus($('sStatus'), 'Este browser não deixa partilhar o ecrã. Usa o Chrome ou o Edge no PC.', 'err'); return;
@@ -616,7 +767,7 @@ async function startSending() {
 
   sDst = PREFIX + code;
   sCid = 'mc_' + rnd(12);
-  sConnected = false; sRestart = null;
+  sConnected = false; sRestart = null; sAuto = false; sConfirmed = false;
   sSig = new Signal(PREFIX + 'pc-' + rnd(10), {
     open: () => { if (!sPc) makeOffer(); },
     lost: () => { if (!sConnected) setStatus($('sStatus'), 'Sem ligação ao servidor, a tentar outra vez… (tens internet?)', 'warn'); },
@@ -626,11 +777,15 @@ async function startSending() {
 }
 
 async function makeOffer() {
-  setStatus($('sStatus'), sRestart ? 'O Tesla pediu outro formato de vídeo (' + sRestart + '). A religar…' : 'A ligar ao Tesla…', 'warn');
+  setStatus($('sStatus'), sRestart ? 'O ecrã pediu outro formato de vídeo (' + sRestart + '). A religar…' : 'A ligar ao ecrã…', 'warn');
   const pc = sPc = new RTCPeerConnection({ iceServers: ICE });
   sStream.getTracks().forEach(t => pc.addTrack(t, sStream));
-  // (o formato de vídeo é escolhido pelo Tesla na resposta)
-  // Canal de controlo: o Tesla pode pedir outra qualidade
+  // nada é enviado até confirmares o código de verificação
+  sConfirmed = false;
+  sHeld = pc.getSenders().filter(x => x.track).map(x => [x, x.track]);
+  await Promise.all(sHeld.map(([x]) => x.replaceTrack(null)));
+  // (o formato de vídeo é escolhido pelo ecrã de destino na resposta)
+  // Canal de controlo: o ecrã de destino pode pedir outra qualidade
   sCtrl = pc.createDataChannel('ctrl');
   sCtrl.onopen = () => sendState();
   sCtrl.onmessage = ev => {
@@ -647,14 +802,12 @@ async function makeOffer() {
     const s = pc.iceConnectionState;
     if (s === 'connected' || s === 'completed') {
       sConnected = true;
-      setStatus($('sStatus'), '✔ A transmitir para o Tesla' + (hasAudio ? ' (com som)' : ' (sem som — marca a opção de áudio)') +
-        ' · ' + Q_LABEL[sCur.q] + ' ' + sCur.fps + ' fps' + (sRestart ? ' · formato mudado pelo Tesla para ' + sRestart : ''), hasAudio ? 'ok' : 'warn');
-      setBitrate(pc, brFor(sCur), sCur.fps);
+      if (sConfirmed) { showSending(); setBitrate(pc, brFor(sCur), sCur.fps); }
     } else if (s === 'failed') setStatus($('sStatus'), 'A ligação falhou (rede bloqueada?). Experimenta outra rede.', 'err');
     else if (s === 'disconnected') setStatus($('sStatus'), 'Ligação instável…', 'warn');
   };
   const offer = await pc.createOffer();
-  // A oferta vai primeiro, para chegar ao Tesla antes dos candidatos ICE
+  // A oferta vai primeiro, para chegar ao ecrã de destino antes dos candidatos ICE
   sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null });
   await pc.setLocalDescription(offer);
   setBitrate(pc, brFor(sCur), sCur.fps);
@@ -668,15 +821,22 @@ async function senderMsg(m) {
       await sPc.setRemoteDescription({ type: 'answer', sdp: p.sdp.sdp });
       for (const c of sPending) await sPc.addIceCandidate(c).catch(() => {});
       sPending = [];
-    } catch (e) { stopSending('O Tesla recusou a ligação (' + e.message + ').', 'err'); }
+      sSas = await sasFrom(sPc.localDescription.sdp, p.sdp.sdp);
+      if (sAuto) { sAuto = false; await confirmSend(true); }
+      else {
+        $('sasPc').textContent = sSas; $('verify').classList.remove('hidden');
+        setStatus($('sStatus'), 'O ecrã aceitou. Confirma o código de verificação abaixo.', 'warn');
+      }
+    } catch (e) { stopSending('O ecrã recusou a ligação (' + e.message + ').', 'err'); }
   } else if (m.type === 'CANDIDATE' && p.connectionId === sCid && p.candidate && p.candidate.candidate) {
     if (sPc.remoteDescription) sPc.addIceCandidate(p.candidate).catch(() => {});
     else sPending.push(p.candidate);
   } else if (m.type === 'EXPIRE' && m.src === sDst && !sConnected) {
-    stopSending('Código não encontrado. Confirma o código no ecrã do Tesla (tem de estar em “Pronto ✔”).', 'err');
+    stopSending('Código não encontrado. Confirma o código no ecrã de destino (tem de estar em “Pronto ✔”).', 'err');
   } else if (m.type === 'LEAVE' && m.src === sDst) {
-    if (p.restart && sStream) restartPeer(p.codec);
-    else stopSending('O Tesla fechou a ligação.', 'warn');
+    if (p.declined) stopSending('O ecrã recusou a ligação (ou ninguém carregou em Aceitar a tempo).', 'warn');
+    else if (p.restart && sStream) restartPeer(p.codec);
+    else stopSending('O ecrã fechou a ligação.', 'warn');
   }
 }
 
@@ -686,9 +846,10 @@ async function restartPeer(codec) {
   sPc = null; sCtrl = null; sPending = []; sConnected = false;
   sCid = 'mc_' + rnd(12);
   sRestart = codec ? ({ vp8: 'VP8', h264: 'H.264', vp9: 'VP9' }[codec] || codec) : 'outro';
+  sAuto = true;   // já confirmaste o código com este Tesla: religar sem perguntar
   await makeOffer();
 }
-// (já não usado por defeito: o Tesla decide o formato)
+// (já não usado por defeito: o ecrã de destino decide o formato)
 function preferH264(pc) {
   try {
     const caps = RTCRtpSender.getCapabilities && RTCRtpSender.getCapabilities('video');
@@ -719,7 +880,8 @@ async function setBitrate(pc, br, fps) {
 function stopSending(msg, kind) {
   if (sSig && sDst && sPc) sSig.send('LEAVE', sDst, { type: 'media', connectionId: sCid });
   if (sPc) { try { sPc.close(); } catch (e) {} sPc = null; }
-  sCtrl = null;
+  sCtrl = null; sHeld = []; sConfirmed = false;
+  $('verify').classList.add('hidden');
   if (sSig) { sSig.close(); sSig = null; }
   if (sStream) { sStream.getTracks().forEach(t => t.stop()); sStream = null; }
   sPending = []; sConnected = false;
@@ -738,7 +900,7 @@ $('codecSel').value = codecChoice();
 if (params.has('fs')) { $('fsBox').classList.add('hidden'); $('fullBtn').classList.add('hidden'); }
 if (params.has('tesla')) startViewer();
 else if (params.has('pc')) show('sender');
-if (params.get('code')) $('code').value = params.get('code');
+if (params.get('code')) $('code').value = fmtCode(params.get('code'));
 if ('serviceWorker' in navigator && location.protocol === 'https:') { navigator.serviceWorker.register('sw.js').catch(() => {}); }
 </script>
 </body>

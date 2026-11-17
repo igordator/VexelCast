@@ -1,7 +1,7 @@
 {
-  "name": "TeslaCast",
-  "short_name": "TeslaCast",
-  "description": "Mostrar o ecrã e o som do PC no Tesla",
+  "name": "VexelCast",
+  "short_name": "VexelCast",
+  "description": "Partilhar o ecrã e o som do PC com outro ecrã",
   "start_url": "./?pc",
   "scope": "./",
   "display": "standalone",
