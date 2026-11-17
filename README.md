@@ -10,5 +10,7 @@ com o browser de outro aparelho (carro, TV, tablet, computador), por WebRTC. Num
 - Sem contas, sem anúncios, sem recolha de dados.
 - Imagem e som encriptados de ponta a ponta entre os dois aparelhos.
 - Código novo de 8 caracteres em cada sessão (não se repete), confirmação no ecrã de destino e código de verificação de 4 números.
+- Som estéreo de alta qualidade (Opus 256 kb/s), imagem nítida desde o arranque e escolha de atraso no ecrã de destino.
+- Funciona entre redes diferentes (TURN por UDP/TCP, com opção de servidor TURN próprio) e religa sozinho se a ligação cair.
 
 Licença: [MIT](LICENSE). Fornecido "tal como está", sem garantias.

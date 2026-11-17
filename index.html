@@ -100,6 +100,16 @@
   #waitOv { font-size: 24px; }
   footer.legal { margin-top: 26px; color: var(--muted); font-size: 13px; text-align: center; max-width: 640px; line-height: 1.5; }
   footer.legal a { color: #93c5fd; }
+  details.net { width: 100%; max-width: 520px; background: var(--card); border-radius: 16px; padding: 12px 18px; color: var(--muted); font-size: 15px; line-height: 1.5; }
+  details.net p { text-align: left; }
+  label.switch { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  label.switch input { width: 24px; height: 24px; margin: 0; accent-color: var(--green); }
+  details.net summary { cursor: pointer; font-weight: 700; color: var(--text); font-size: 16px; }
+  details.net input { font-size: 17px; padding: 9px 12px; margin: 4px 0 8px; }
+  details.net label { font-size: 14px; display: block; }
+  details.net .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  details.net .status { margin-top: 8px; font-size: 15px; }
+  .ios { background: #1e293b; border: 2px solid #f59e0b; border-radius: 14px; padding: 14px 16px; max-width: 520px; font-size: 15px; line-height: 1.55; }
   #preview { width: 100%; max-width: 520px; border-radius: 14px; background: black; display: none; }
 </style>
 </head>
@@ -146,6 +156,15 @@
       <option value="vp9">VP9</option>
     </select>
   </div>
+  <div class="vset">
+    <label for="latSel">Atraso:</label>
+    <select id="latSel" onchange="setLatency(this.value)">
+      <option value="low">Mínimo (mais rápido)</option>
+      <option value="mid">Equilibrado</option>
+      <option value="smooth">Estável (redes fracas)</option>
+    </select>
+  </div>
+  <div class="netph" data-p="v"></div>
   <button class="btn ghost" onclick="newCode()">Gerar outro código</button>
   <footer class="legal">Projeto independente, sem ligação a nenhum fabricante. Num carro, usa só estacionado. <a href="termos.html">Termos e privacidade</a></footer>
 </section>
@@ -175,6 +194,13 @@
         </select>
       </div>
     </div>
+    <label for="mode">Tipo de conteúdo</label>
+    <select id="mode" onchange="setMode(this.value, 'pc')">
+      <option value="motion">Vídeos, filmes e jogos (mais fluido)</option>
+      <option value="detail">Texto, slides e documentos (mais nítido)</option>
+    </select>
+    <label class="switch"><input type="checkbox" id="adapt" checked onchange="setAdapt(this.checked, 'pc')"> Ajuste automático à rede</label>
+    <div class="hint" id="adaptHint"></div>
     <div class="hint">Podes mudar a qualidade a meio da transmissão, aqui ou no ecrã de destino (<i data-ic="gear"></i>).</div>
     <button class="btn go" id="goBtn" onclick="startSending()"><i data-ic="play"></i> Começar a transmitir</button>
     <button class="btn stop" id="stopBtn" onclick="stopSending()" style="display:none"><i data-ic="stop"></i> Parar</button>
@@ -189,7 +215,9 @@
       </div>
     </div>
   </div>
+  <div class="ios hidden" id="iosNote"></div>
   <video id="preview" muted playsinline></video>
+  <div class="netph" data-p="s"></div>
   <div class="tips">
     <b>Dica 1:</b> para ver um vídeo do browser, escolhe <b>“Separador do Chrome/Edge”</b> e deixa ligado
     <b>“Partilhar também o áudio do separador”</b>. O som deixa de sair no PC e sai só no carro.<br>
@@ -223,18 +251,26 @@
   <div class="overlay" id="unmute" onclick="unmute()"><i data-ic="speaker"></i> Toca aqui para ligar o som</div>
   <div class="bar" id="bar">
     <span id="qInfo">…</span>
-    <button id="qBtn" onclick="toggleQPanel()" style="display:none"><i data-ic="gear"></i> Qualidade</button>
+    <button id="qBtn" onclick="toggleQPanel()"><i data-ic="gear"></i> Qualidade</button>
     <button onclick="toggleDiag()" title="Diagnóstico"><i data-ic="info"></i></button>
     <button id="fullBtn" onclick="goFull()"><i data-ic="full"></i> Ecrã inteiro</button>
     <button onclick="endView()"><i data-ic="x"></i> Fechar</button>
   </div>
   <div id="diag"></div>
   <div id="qPanel">
-    <h3><i data-ic="gear"></i> Qualidade</h3>
-    <div class="opts" id="qOpts"></div>
-    <h3>Fluidez</h3>
-    <div class="opts" id="fOpts"></div>
-    <small>Se ficar aos soluços, escolhe uma qualidade mais baixa.</small>
+    <div id="qRemote">
+      <h3><i data-ic="gear"></i> Qualidade</h3>
+      <div class="opts" id="qOpts"></div>
+      <h3>Fluidez</h3>
+      <div class="opts" id="fOpts"></div>
+      <h3>Tipo de conteúdo</h3>
+      <div class="opts" id="mOpts"></div>
+      <h3>Ajuste automático à rede</h3>
+      <div class="opts" id="aOpts"></div>
+    </div>
+    <h3>Atraso</h3>
+    <div class="opts" id="lOpts"></div>
+    <small>Se ficar aos soluços, escolhe uma qualidade mais baixa ou o atraso “Estável”.</small>
   </div>
 </div>
 
@@ -248,10 +284,86 @@
 const PREFIX = 'vexelcast-';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
-const ICE = params.has('noice') ? [] : [
+/* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
+   a imagem quando os dois aparelhos não se conseguem ver diretamente (redes diferentes, dados móveis,
+   Wi-Fi de empresa…). As variantes "transport=tcp" passam em redes que bloqueiam UDP. */
+const PUBLIC_ICE = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
-  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }
+  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478',
+           'turn:eu-0.turn.peerjs.com:3478?transport=tcp', 'turn:us-0.turn.peerjs.com:3478?transport=tcp'],
+    username: 'peerjs', credential: 'peerjsp' }
 ];
+// Servidor TURN próprio (opcional, ex.: conta grátis ExpressTURN). Fica guardado só neste browser.
+function myTurn() {
+  try { const t = JSON.parse(localStorage.getItem('vx-turn') || 'null'); if (t && t.urls && t.urls.length) return t; } catch (e) {}
+  return null;
+}
+function turnUrls(text) {
+  const out = [];
+  for (let u of String(text || '').split(/[\s,;]+/).filter(Boolean)) {
+    if (/^(turns?|stun):/i.test(u)) { out.push(u); continue; }
+    u = u.replace(/^[a-z]+:\/\//i, '').replace(/\/.*$/, '');      // ex.: "relay1.exemplo.com:3478"
+    if (!/^[\w-]+(\.[\w-]+)+(:\d+)?$/.test(u)) continue;   // tem de ser um endereço com pontos
+    const host = u.split(':')[0], port = u.split(':')[1] || '3478';
+    out.push('turn:' + host + ':' + port + '?transport=udp', 'turn:' + host + ':' + port + '?transport=tcp');
+    if (!u.includes(':')) out.push('turns:' + host + ':443?transport=tcp');
+  }
+  return [...new Set(out)];
+}
+function iceServers() {
+  if (params.has('noice')) return [];
+  const t = myTurn();
+  return t ? [t].concat(PUBLIC_ICE) : PUBLIC_ICE;
+}
+function rtcConfig() { return { iceServers: iceServers(), bundlePolicy: 'max-bundle' }; }
+
+/* Afinação da ligação (SDP), aplicada pelo emissor à resposta do ecrã antes de a usar:
+   - vídeo: começa logo com bitrate alto (sem os ~10 s de imagem desfocada no arranque) e levanta
+     o teto interno do Chrome (~2,5 Mbps), deixando o controlo de congestionamento decidir;
+   - som: Opus estéreo de alta qualidade, com correção de pacotes perdidos e sem cortes no silêncio. */
+const MAX_KBPS = 40000;
+function sdpParams(s, add) {
+  const kv = s ? s.split(';').map(x => x.trim()).filter(Boolean) : [];
+  const keys = kv.map(x => x.split('=')[0]);
+  for (const [k, v] of Object.entries(add)) {
+    const i = keys.indexOf(k), e = k + '=' + v;
+    if (i >= 0) kv[i] = e; else { kv.push(e); keys.push(k); }
+  }
+  return kv.join(';');
+}
+function tuneSdp(sdp, video, audio) {
+  const eol = sdp.includes('\r\n') ? '\r\n' : '\n';
+  const secs = [[]];
+  for (const l of sdp.split(eol)) { if (l.startsWith('m=')) secs.push([]); secs[secs.length - 1].push(l); }
+  return secs.map(sec => {
+    const kind = /^m=video/.test(sec[0] || '') ? 'video' : /^m=audio/.test(sec[0] || '') ? 'audio' : '';
+    const want = {};
+    sec.forEach(l => {
+      const m = l.match(/^a=rtpmap:(\d+) ([\w-]+)\//); if (!m) return;
+      const n = m[2].toUpperCase();
+      if (kind === 'video' && video && ['VP8', 'VP9', 'H264', 'H265', 'AV1'].includes(n)) want[m[1]] = video;
+      if (kind === 'audio' && audio && n === 'OPUS') want[m[1]] = audio;
+    });
+    if (!Object.keys(want).length) return sec;
+    const done = {}, res = sec.map(l => {
+      const f = l.match(/^a=fmtp:(\d+) (.*)$/);
+      if (f && want[f[1]]) { done[f[1]] = 1; return 'a=fmtp:' + f[1] + ' ' + sdpParams(f[2], want[f[1]]); }
+      return l;
+    });
+    for (const pt of Object.keys(want)) if (!done[pt]) {
+      const i = res.findIndex(l => l.startsWith('a=rtpmap:' + pt + ' '));
+      res.splice(i + 1, 0, 'a=fmtp:' + pt + ' ' + sdpParams('', want[pt]));
+    }
+    return res;
+  }).flat().join(eol);
+}
+const OPUS_HQ = { stereo: 1, 'sprop-stereo': 1, maxaveragebitrate: 256000, maxplaybackrate: 48000, useinbandfec: 1, usedtx: 0 };
+// fixed = ajuste automático desligado: arranca no máximo e não deixa o bitrate descer abaixo de 85%
+function videoSdpParams(br, fixed) {
+  const k = Math.round(br / 1000);
+  if (fixed) return { 'x-google-start-bitrate': k, 'x-google-min-bitrate': Math.round(k * 0.85), 'x-google-max-bitrate': MAX_KBPS };
+  return { 'x-google-start-bitrate': Math.round(k * 0.6), 'x-google-min-bitrate': Math.min(1500, Math.round(k * 0.15)), 'x-google-max-bitrate': MAX_KBPS };
+}
 const $ = id => document.getElementById(id);
 const ICONS = {
   full: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
@@ -435,19 +547,23 @@ function newCode() { startViewer(true); }
 
 async function viewerMsg(m) {
   const p = m.payload || {};
-  if (m.type === 'OFFER' && p.type === 'media' && p.sdp && p.sdp.sdp) {
+  if (m.type === 'OFFER' && p.type === 'media' && p.sdp && p.sdp.sdp && vPc && vRemote && vRemote.accepted &&
+      m.src === vRemote.src && p.connectionId === vRemote.cid) {
+    renegotiate(p.sdp.sdp);   // o mesmo aparelho a reparar a ligação (mudou de rede, etc.)
+  } else if (m.type === 'OFFER' && p.type === 'media' && p.sdp && p.sdp.sdp) {
     // religar pedido por este ecrã (troca de formato): aceita sem perguntar outra vez
     const auto = !!(vExpect && vExpect.src === m.src && Date.now() < vExpect.until);
     vExpect = null;
     closeViewerPc();
-    const remote = vRemote = { src: m.src, cid: p.connectionId, accepted: false, sas: null };
+    const remote = vRemote = { src: m.src, cid: p.connectionId, accepted: false, sas: null, fp: sdpFingerprint(p.sdp.sdp).toUpperCase() };
     const held = [];
     vPending = [];
     vStream = new MediaStream();
-    const pc = vPc = new RTCPeerConnection({ iceServers: ICE });
+    const pc = vPc = new RTCPeerConnection(rtcConfig());
     pc.ontrack = e => {
       if (pc !== vPc) return;
       vStream.addTrack(e.track);
+      applyLatency(pc);
       if (remote.accepted) playStream(vStream);
     };
     // Canal de controlo (só o PC o abre): permite mudar a qualidade a partir do ecrã de destino
@@ -456,9 +572,9 @@ async function viewerMsg(m) {
       vCtrl = e.channel;
       vCtrl.onmessage = ev => {
         let m; try { m = JSON.parse(ev.data); } catch (err) { return; }
-        if (m.t === 'state') { vQ = m; $('qBtn').style.display = 'inline-block'; renderQPanel(); }
+        if (m.t === 'state') { vQ = m; renderQPanel(); }
       };
-      vCtrl.onclose = () => { $('qBtn').style.display = 'none'; $('qPanel').classList.remove('on'); };
+      vCtrl.onclose = () => { if (pc === vPc) { vQ = null; renderQPanel(); } };
     };
     pc.onicecandidate = e => {
       if (!(e.candidate && e.candidate.candidate)) return;
@@ -469,9 +585,23 @@ async function viewerMsg(m) {
     pc.oniceconnectionstatechange = () => {
       if (pc !== vPc || !remote.accepted) return;
       const s = pc.iceConnectionState;
-      if (s === 'connected' || s === 'completed') { setStatus($('vStatus'), 'Ligado ✔', 'ok'); if (vWatch && !vWatch.connectedAt) vWatch.connectedAt = Date.now(); }
-      else if (s === 'failed') backToCode('A ligação falhou.');
-      else if (s === 'disconnected') setTimeout(() => { if (pc === vPc && pc.iceConnectionState === 'disconnected') backToCode('A ligação caiu.'); }, 6000);
+      if (s === 'connected' || s === 'completed') {
+        setStatus($('vStatus'), 'Ligado ✔', 'ok'); if (vWatch && !vWatch.connectedAt) vWatch.connectedAt = Date.now();
+        if (remote.lostAt) { remote.lostAt = 0; clearTimeout(remote.lostTimer); $('waitOv').style.display = 'none'; }
+      } else if (s === 'failed' || s === 'disconnected') {
+        // não desistir logo: o PC/telemóvel vai tentar religar (ICE restart) durante ~1 minuto
+        if (remote.lostAt) return;
+        remote.lostAt = Date.now();
+        clearTimeout(remote.lostTimer);
+        remote.lostTimer = setTimeout(() => {
+          if (pc === vPc && !['connected', 'completed'].includes(pc.iceConnectionState)) backToCode('A ligação caiu.');
+        }, window.LOST_MS || 60000);
+        setTimeout(() => {
+          if (pc === vPc && remote.lostAt && !['connected', 'completed'].includes(pc.iceConnectionState)) {
+            $('waitOv').textContent = 'A ligação caiu. A religar…'; $('waitOv').style.display = 'block';
+          }
+        }, 2500);
+      }
     };
     setStatus($('vStatus'), 'A receber ligação…', 'warn');
     vCodec = codecToUse();
@@ -515,17 +645,50 @@ async function viewerMsg(m) {
   }
 }
 
+async function renegotiate(sdp) {
+  const pc = vPc, remote = vRemote;
+  if (sdpFingerprint(sdp).toUpperCase() !== remote.fp) return;   // não é o mesmo aparelho: ignorar
+  try {
+    if (pc.signalingState !== 'stable') await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+    await pc.setRemoteDescription({ type: 'offer', sdp });
+    const ans = await pc.createAnswer();
+    const a = preferInSdp(ans.sdp, vCodec);
+    await pc.setLocalDescription({ type: 'answer', sdp: a });
+    if (pc !== vPc) return;
+    vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp: a }, type: 'media', connectionId: remote.cid });
+    window.__renegotiations = (window.__renegotiations || 0) + 1;
+  } catch (e) { console.warn('religar', e); }
+}
+/* Atraso no ecrã de destino: "Mínimo" mostra cada imagem logo que chega (mais rápido, pode dar
+   pequenos soluços em redes fracas); os outros guardam um pouco de imagem para ficar mais estável. */
+const LAT = { low: 0, mid: 150, smooth: 400 };
+const LAT_LABEL = { low: 'Mínimo', mid: 'Equilibrado', smooth: 'Estável' };
+function latChoice() { const l = store('vx-lat'); return LAT[l] !== undefined ? l : 'low'; }
+function applyLatency(pc) {
+  const ms = LAT[latChoice()];
+  (pc || vPc) && (pc || vPc).getReceivers().forEach(r => {
+    try {
+      if ('jitterBufferTarget' in r) r.jitterBufferTarget = ms;
+      else if ('playoutDelayHint' in r) r.playoutDelayHint = ms / 1000;
+    } catch (e) {}
+  });
+}
+function setLatency(l) {
+  if (LAT[l] === undefined) return;
+  store('vx-lat', l); if ($('latSel')) $('latSel').value = l;
+  applyLatency(); renderQPanel();
+}
 function closeViewerPc() {
+  if (vRemote) clearTimeout(vRemote.lostTimer);
   if (vPc) { try { vPc.close(); } catch (e) {} }
   hideAsk();
   $('waitOv').style.display = 'none';
   vWatch = null;
   vPc = null; vRemote = null; vPending = []; vCtrl = null; vQ = null;
-  $('qBtn').style.display = 'none'; $('qPanel').classList.remove('on');
+  $('qPanel').classList.remove('on');
   clearInterval(vInfoTimer); vInfoTimer = null;
 }
 function renderQPanel() {
-  if (!vQ) return;
   const mk = (box, items, cur, onPick) => {
     box.innerHTML = '';
     items.forEach(([val, label]) => {
@@ -536,13 +699,25 @@ function renderQPanel() {
       box.appendChild(b);
     });
   };
+  mk($('lOpts'), Object.keys(LAT).map(k => [k, LAT_LABEL[k]]), latChoice(), setLatency);
+  $('qRemote').style.display = vQ ? '' : 'none';
+  if (!vQ) return;
   mk($('qOpts'), (vQ.options || Object.keys(Q_LABEL)).map(k => [k, Q_LABEL[k] || k]), vQ.q, q => requestQuality(q, vQ.fps));
   mk($('fOpts'), [[30, '30 fps'], [60, '60 fps']], vQ.fps, f => requestQuality(vQ.q, f));
+  mk($('mOpts'), [['motion', 'Vídeo / jogos'], ['detail', 'Texto / slides']], vQ.mode || 'motion', md => requestMode(md));
+  mk($('aOpts'), [['on', 'Ligado'], ['off', 'Desligado (qualidade fixa)']], vQ.auto === false ? 'off' : 'on', a => requestAdapt(a === 'on'));
 }
 function requestQuality(q, fps) {
   if (vCtrl && vCtrl.readyState === 'open') vCtrl.send(JSON.stringify({ t: 'set', q: String(q), fps: Number(fps) }));
 }
+function requestAdapt(on) {
+  if (vCtrl && vCtrl.readyState === 'open') vCtrl.send(JSON.stringify({ t: 'set', auto: on }));
+}
+function requestMode(mode) {
+  if (vCtrl && vCtrl.readyState === 'open') vCtrl.send(JSON.stringify({ t: 'set', mode }));
+}
 function toggleQPanel() {
+  renderQPanel();
   const on = $('qPanel').classList.toggle('on');
   clearTimeout(barTimer);
   if (on) $('bar').classList.add('show'); else flashBar();
@@ -558,6 +733,7 @@ async function updateInfo() {
       if (s.type === 'inbound-rtp' && s.kind === 'video') {
         d.bytes = s.bytesReceived || 0; d.frames = s.framesDecoded || 0; d.recv = s.framesReceived || 0;
         d.w = s.frameWidth || 0; d.h = s.frameHeight || 0; d.fps = Math.round(s.framesPerSecond || 0);
+        d.lost = s.packetsLost || 0; d.pkts = s.packetsReceived || 0;
         if (s.codecId && byId[s.codecId]) d.codec = byId[s.codecId].mimeType.replace('video/', '');
       }
       if (s.type === 'candidate-pair' && (s.nominated || s.selected) && s.state === 'succeeded') {
@@ -576,7 +752,7 @@ async function updateInfo() {
   // 1) Ligação não passa
   if (!w.connectedAt && now - w.start > 15000 && !w.warnedNet) {
     w.warnedNet = true;
-    vToast('A ligação não está a passar. Põe este aparelho no hotspot do telemóvel (ou noutro Wi-Fi) e tenta outra vez.');
+    vToast('A ligação não está a passar. No PC, abre “Ligar entre redes diferentes” e junta um servidor TURN grátis (vê o guia). Em alternativa, põe os dois aparelhos na mesma rede.');
   }
   // 2) Chegam dados mas nenhuma imagem é descodificada -> este formato não funciona neste ecrã
   if (w.bytesAt && d.frames === 0 && now - w.bytesAt > 5000 && d.bytes > 30000 && !w.decodeFail) {
@@ -589,6 +765,16 @@ async function updateInfo() {
     setStatus($('vStatus'), 'Ligado ✔', 'ok');
     if (v.srcObject && v.srcObject.getAudioTracks().length && v.muted) { $('unmute').innerHTML = richText('🔊 Toca aqui para ligar o som'); $('unmute').style.display = 'block'; }
   }
+  // 5) Ajuste automático desligado e a rede não aguenta (perde > 5% dos pacotes durante 3 s): avisar
+  if (vQ && vQ.auto === false && w.lastPk !== undefined) {
+    const dl = d.lost - w.lastLost, dp = d.pkts - w.lastPk;
+    w.bad = (dp > 0 && dl / (dl + dp) > 0.05) ? (w.bad || 0) + 1 : 0;
+    if (w.bad >= 3 && !w.warnedFixed) {
+      w.warnedFixed = true;
+      vToast('A rede não está a aguentar esta qualidade. Liga o “Ajuste automático” (botão Qualidade) ou escolhe uma qualidade mais baixa.');
+    }
+  }
+  w.lastPk = d.pkts; w.lastLost = d.lost;
   // 4) Imagem a chegar mas o vídeo está parado (autoplay bloqueado)
   if (d.frames > 0 && v.paused) { $('unmute').innerHTML = richText('▶ Toca aqui para ver'); $('unmute').style.display = 'block'; }
   renderDiag(d);
@@ -668,7 +854,7 @@ $('player').addEventListener('click', e => { if (e.target.id === 'video') { $('q
 
 /* ---------------- PC (TRANSMITIR) ---------------- */
 let sSig = null, sPc = null, sStream = null, sDst = null, sCid = null, sPending = [], sConnected = false, sCtrl = null, sRestart = null;
-let sHeld = [], sConfirmed = false, sAuto = false, sSas = null;
+let sHeld = [], sConfirmed = false, sAuto = false, sSas = null, sAnswerFp = '', sIceTimer = null, sIceTries = 0;
 function showSending() {
   const hasAudio = sStream && sStream.getAudioTracks().length > 0;
   const vt = sStream && sStream.getVideoTracks()[0], st = vt ? vt.getSettings() : {};
@@ -689,14 +875,53 @@ async function confirmSend(ok) {
   if (sConnected) showSending(); else setStatus($('sStatus'), 'A ligar ao ecrã…', 'warn');
 }
 // h = altura máxima; br = bitrate máximo a 30 fps (a 60 fps usa-se 1,5×)
+// (é um teto: se a rede não aguentar, o WebRTC baixa sozinho para não acumular atraso)
 const QUALITY = {
-  360:  { h: 360,  br: 800000 },
-  540:  { h: 540,  br: 1500000 },
-  720:  { h: 720,  br: 3000000 },
-  1080: { h: 1080, br: 6000000 },
-  max:  { h: 2160, br: 12000000 }
+  360:  { h: 360,  br: 1000000 },
+  540:  { h: 540,  br: 2000000 },
+  720:  { h: 720,  br: 4500000 },
+  1080: { h: 1080, br: 9000000 },
+  max:  { h: 2160, br: 20000000 }
 };
 let sCur = { q: '720', fps: 30 };
+/* Tipo de conteúdo: 'motion' = vídeos/jogos (prioridade à fluidez), 'detail' = texto/apresentações
+   (prioridade à nitidez das letras). */
+const MODE_LABEL = { motion: 'Vídeo', detail: 'Texto' };
+let sMode = store('vx-mode') === 'detail' ? 'detail' : 'motion';
+function setMode(mode, from) {
+  if (!MODE_LABEL[mode]) return;
+  sMode = mode; store('vx-mode', mode); $('mode').value = mode;
+  const vt = sStream && sStream.getVideoTracks()[0];
+  if (vt) vt.contentHint = mode;
+  if (sPc) setBitrate(sPc, brFor(sCur), sCur.fps);
+  sendState();
+  if (from === 'tesla' && sConnected && sConfirmed) setStatus($('sStatus'), '✔ A transmitir · modo ' + MODE_LABEL[mode] + ' — mudado no ecrã de destino', 'ok');
+}
+/* Ajuste automático à rede. Ligado: se a rede apertar, a qualidade baixa um pouco para não haver
+   atraso nem cortes. Desligado: mantém a resolução, os fps e o bitrate que escolheste (se a rede
+   não aguentar, em vez de baixar a qualidade vais ter atraso e saltos). */
+let sAdapt = store('vx-adapt') !== '0';
+function setAdapt(on, from) {
+  sAdapt = !!on; store('vx-adapt', sAdapt ? '1' : '0'); $('adapt').checked = sAdapt;
+  $('adaptHint').textContent = sAdapt
+    ? 'Ligado: se a rede apertar, baixa um pouco a qualidade para não haver atraso.'
+    : 'Desligado: mantém sempre a qualidade escolhida. Se a rede não aguentar, vais ter atraso e saltos.';
+  if (sPc) { setBitrate(sPc, brFor(sCur), sCur.fps); renegotiateSender(); }
+  sendState();
+  if (sConnected && sConfirmed) setStatus($('sStatus'), '✔ A transmitir · ajuste automático ' + (sAdapt ? 'ligado' : 'desligado') +
+    (from === 'tesla' ? ' — mudado no ecrã de destino' : ''), 'ok');
+}
+// Renegociar a ligação já confirmada (mesma encriptação) para aplicar um novo limite mínimo de bitrate
+async function renegotiateSender() {
+  const pc = sPc;
+  if (!pc || !sConfirmed || pc.signalingState !== 'stable' || !pc.currentRemoteDescription) return;
+  try {
+    const offer = await pc.createOffer();
+    if (pc !== sPc) return;
+    sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true });
+    await pc.setLocalDescription(offer);
+  } catch (e) { console.warn('renegociar', e); }
+}
 function brFor(cur) { return Math.round(QUALITY[cur.q].br * (cur.fps >= 60 ? 1.5 : 1)); }
 function videoConstraints(cur) {
   const c = { frameRate: { ideal: cur.fps, max: cur.fps } };
@@ -727,6 +952,7 @@ async function setQuality(q, fps, from) {
     try { await vt.applyConstraints(c); } catch (e) { console.warn('constraints', e); }
   }
   if (sPc) await setBitrate(sPc, brFor(sCur), fps);
+  if (!sAdapt) renegotiateSender();   // novo mínimo de bitrate para a nova qualidade
   sendState();
   if (sConnected && sConfirmed) {
     const s = vt ? vt.getSettings() : {};
@@ -736,7 +962,7 @@ async function setQuality(q, fps, from) {
 }
 function sendState() {
   if (sCtrl && sCtrl.readyState === 'open')
-    sCtrl.send(JSON.stringify({ t: 'state', q: sCur.q, fps: sCur.fps, options: Object.keys(QUALITY) }));
+    sCtrl.send(JSON.stringify({ t: 'state', q: sCur.q, fps: sCur.fps, mode: sMode, auto: sAdapt, options: Object.keys(QUALITY) }));
 }
 
 async function startSending() {
@@ -751,7 +977,9 @@ async function startSending() {
   try {
     sStream = await navigator.mediaDevices.getDisplayMedia({
       video: videoConstraints(sCur),
-      audio: { suppressLocalAudioPlayback: true, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      // som em estéreo a 48 kHz, sem os filtros de chamada (que estragam música e filmes)
+      audio: { suppressLocalAudioPlayback: true, restrictOwnAudio: true, echoCancellation: false, noiseSuppression: false,
+               autoGainControl: false, channelCount: { ideal: 2 }, sampleRate: { ideal: 48000 } },
       systemAudio: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'include'
     });
   } catch (e) {
@@ -760,7 +988,7 @@ async function startSending() {
     return;
   }
   const vt = sStream.getVideoTracks()[0];
-  if (vt) { vt.contentHint = 'motion'; vt.onended = () => stopSending('Parado'); }
+  if (vt) { vt.contentHint = sMode; vt.onended = () => stopSending('Parado'); }
   $('preview').srcObject = sStream; $('preview').style.display = 'block'; $('preview').play().catch(() => {});
   $('goBtn').style.display = 'none'; $('stopBtn').style.display = 'block';
   setStatus($('sStatus'), 'A ligar ao servidor…', 'warn');
@@ -778,7 +1006,7 @@ async function startSending() {
 
 async function makeOffer() {
   setStatus($('sStatus'), sRestart ? 'O ecrã pediu outro formato de vídeo (' + sRestart + '). A religar…' : 'A ligar ao ecrã…', 'warn');
-  const pc = sPc = new RTCPeerConnection({ iceServers: ICE });
+  const pc = sPc = new RTCPeerConnection(rtcConfig());
   sStream.getTracks().forEach(t => pc.addTrack(t, sStream));
   // nada é enviado até confirmares o código de verificação
   sConfirmed = false;
@@ -790,7 +1018,11 @@ async function makeOffer() {
   sCtrl.onopen = () => sendState();
   sCtrl.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch (err) { return; }
-    if (m.t === 'set') setQuality(m.q, m.fps, 'tesla');
+    if (m.t === 'set') {
+      if (typeof m.auto === 'boolean' && m.auto !== sAdapt) setAdapt(m.auto, 'tesla');
+      if (m.mode && m.mode !== sMode) setMode(m.mode, 'tesla');
+      if (m.q) setQuality(m.q, m.fps, 'tesla');
+    }
   };
   pc.onicecandidate = e => {
     if (e.candidate && e.candidate.candidate)
@@ -801,10 +1033,15 @@ async function makeOffer() {
     if (pc !== sPc) return;
     const s = pc.iceConnectionState;
     if (s === 'connected' || s === 'completed') {
-      sConnected = true;
+      sConnected = true; sIceTries = 0; clearTimeout(sIceTimer); sIceTimer = null;
       if (sConfirmed) { showSending(); setBitrate(pc, brFor(sCur), sCur.fps); }
-    } else if (s === 'failed') setStatus($('sStatus'), 'A ligação falhou (rede bloqueada?). Experimenta outra rede.', 'err');
-    else if (s === 'disconnected') setStatus($('sStatus'), 'Ligação instável…', 'warn');
+    } else if (s === 'failed') {
+      if (sConfirmed) scheduleIceRestart(0);
+      else setStatus($('sStatus'), 'A ligação não passou. Abre “Ligar entre redes diferentes” e junta um servidor TURN grátis (vê o guia), ou põe os dois aparelhos na mesma rede.', 'err');
+    } else if (s === 'disconnected') {
+      setStatus($('sStatus'), 'Ligação instável…', 'warn');
+      if (sConfirmed) scheduleIceRestart(2500);
+    }
   };
   const offer = await pc.createOffer();
   // A oferta vai primeiro, para chegar ao ecrã de destino antes dos candidatos ICE
@@ -816,9 +1053,15 @@ async function makeOffer() {
 async function senderMsg(m) {
   const p = m.payload || {};
   if (!sPc) return;
-  if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp) {
+  if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp && sPc.currentRemoteDescription) {
+    // resposta a um "religar" (ICE restart): só é aceite se vier do MESMO aparelho já confirmado
+    if (sdpFingerprint(p.sdp.sdp).toUpperCase() !== sAnswerFp || sPc.signalingState !== 'have-local-offer') return;
+    try { await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brFor(sCur), !sAdapt), OPUS_HQ) }); }
+    catch (e) { console.warn('religar', e); }
+  } else if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp) {
     try {
-      await sPc.setRemoteDescription({ type: 'answer', sdp: p.sdp.sdp });
+      sAnswerFp = sdpFingerprint(p.sdp.sdp).toUpperCase();
+      await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brFor(sCur), !sAdapt), OPUS_HQ) });
       for (const c of sPending) await sPc.addIceCandidate(c).catch(() => {});
       sPending = [];
       sSas = await sasFrom(sPc.localDescription.sdp, p.sdp.sdp);
@@ -840,10 +1083,34 @@ async function senderMsg(m) {
   }
 }
 
+/* A ligação caiu a meio (mudaste de rede, o Wi-Fi falhou, o carro saiu do alcance…): renegociar o
+   caminho (ICE restart) na MESMA ligação encriptada, sem perguntar códigos outra vez. */
+function scheduleIceRestart(delay) {
+  if (sIceTimer) return;
+  sIceTimer = setTimeout(() => { sIceTimer = null; iceRestart(); }, delay);
+}
+async function iceRestart(force) {   // force: só para testes
+  const pc = sPc;
+  if (!pc || !sConfirmed || pc !== sPc) return;
+  const st = pc.iceConnectionState;
+  if (!force && (st === 'connected' || st === 'completed')) return;
+  if (sIceTries >= 12) { setStatus($('sStatus'), 'Não deu para voltar a ligar. Carrega em Parar e começa outra vez.', 'err'); return; }
+  sIceTries++;
+  setStatus($('sStatus'), 'A ligação caiu. A religar… (tentativa ' + sIceTries + ')', 'warn');
+  try {
+    const offer = await pc.createOffer({ iceRestart: true });
+    if (pc !== sPc) return;
+    sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true });
+    await pc.setLocalDescription(offer);
+  } catch (e) { console.warn('ice restart', e); }
+  if (!force) scheduleIceRestart(8000);   // se não voltar, tenta outra vez
+}
+window.addEventListener('pagehide', () => { if (sSig && sDst && sPc) sSig.send('LEAVE', sDst, { type: 'media', connectionId: sCid }); });
+
 // O Tesla pediu para religar (normalmente para mudar o formato de vídeo)
 async function restartPeer(codec) {
   if (sPc) { try { sPc.close(); } catch (e) {} }
-  sPc = null; sCtrl = null; sPending = []; sConnected = false;
+  sPc = null; sCtrl = null; sPending = []; sConnected = false; clearTimeout(sIceTimer); sIceTimer = null; sIceTries = 0;
   sCid = 'mc_' + rnd(12);
   sRestart = codec ? ({ vp8: 'VP8', h264: 'H.264', vp9: 'VP9' }[codec] || codec) : 'outro';
   sAuto = true;   // já confirmaste o código com este Tesla: religar sem perguntar
@@ -865,22 +1132,38 @@ function preferH264(pc) {
 }
 async function setBitrate(pc, br, fps) {
   for (const s of pc.getSenders()) {
-    if (!s.track || s.track.kind !== 'video') continue;
+    if (!s.track) continue;
     const p = s.getParameters();
     if (!p.encodings || !p.encodings.length) continue;
-    p.encodings[0].maxBitrate = br;
-    p.encodings[0].maxFramerate = fps || 30;
-    // Manter a resolução escolhida (540/720/1080p). Com 'maintain-framerate' o Chrome baixava
-    // a imagem para 288x180 e não voltava a subir (visto nos testes).
-    p.degradationPreference = 'maintain-resolution';
-    try { await s.setParameters(p); } catch (e) { console.warn('bitrate', e); }
+    if (s.track.kind === 'audio') {
+      // som estéreo a 256 kbps e com prioridade na rede: o som nunca deve falhar
+      p.encodings[0].maxBitrate = 256000;
+      p.encodings[0].priority = 'high'; p.encodings[0].networkPriority = 'high';
+    } else {
+      p.encodings[0].maxBitrate = br;
+      p.encodings[0].maxFramerate = fps || 30;
+      p.encodings[0].scaleResolutionDownBy = 1;
+      p.encodings[0].networkPriority = 'high';
+      // Ajuste automático desligado: não baixar nem a resolução nem os fps.
+      // Ligado + Vídeo: se a rede apertar, baixa um pouco de tudo (mantém fluido). Ligado + Texto: mantém
+      // a resolução (letras nítidas). Nunca 'maintain-framerate': o Chrome baixava para 288x180.
+      p.degradationPreference = !sAdapt ? 'maintain-framerate-and-resolution' : sMode === 'detail' ? 'maintain-resolution' : 'balanced';
+    }
+    try { await s.setParameters(p); }
+    catch (e) {   // browsers mais antigos que não conhecem algum dos valores
+      try {
+        if (p.degradationPreference === 'maintain-framerate-and-resolution') p.degradationPreference = 'maintain-resolution';
+        delete p.encodings[0].networkPriority; delete p.encodings[0].priority; delete p.encodings[0].scaleResolutionDownBy;
+        await s.setParameters(p);
+      } catch (e2) { console.warn('bitrate', e2); }
+    }
   }
 }
 
 function stopSending(msg, kind) {
   if (sSig && sDst && sPc) sSig.send('LEAVE', sDst, { type: 'media', connectionId: sCid });
   if (sPc) { try { sPc.close(); } catch (e) {} sPc = null; }
-  sCtrl = null; sHeld = []; sConfirmed = false;
+  sCtrl = null; sHeld = []; sConfirmed = false; clearTimeout(sIceTimer); sIceTimer = null; sIceTries = 0;
   $('verify').classList.add('hidden');
   if (sSig) { sSig.close(); sSig = null; }
   if (sStream) { sStream.getTracks().forEach(t => t.stop()); sStream = null; }
@@ -890,7 +1173,76 @@ function stopSending(msg, kind) {
   setStatus($('sStatus'), msg || 'Parado', kind);
 }
 
+/* ---------------- REDES DIFERENTES (TURN próprio) ---------------- */
+function netBox(p) {
+  return '<details class="net" id="net-' + p + '"><summary>Ligar entre redes diferentes (opcional)</summary>' +
+    '<p>Quase sempre liga sozinho, em qualquer rede. Se não ligar (dados móveis, Wi-Fi de hotel ou empresa), cria uma conta ' +
+    'grátis num serviço TURN (por exemplo ExpressTURN) e cola aqui os dados. Basta fazê-lo num dos aparelhos (de preferência ' +
+    'no PC). Ficam guardados só neste browser.</p>' +
+    '<label>Servidor (endereço)</label><input class="tUrl" placeholder="relay1.expressturn.com:3478" autocomplete="off" spellcheck="false" autocapitalize="off">' +
+    '<label>Utilizador</label><input class="tUser" autocomplete="off" spellcheck="false" autocapitalize="off">' +
+    '<label>Palavra-passe</label><input class="tPass" type="password" autocomplete="off">' +
+    '<div class="row"><button class="btn ghost" onclick="saveTurn(\'' + p + '\')">Guardar e testar</button>' +
+    '<button class="btn ghost" onclick="clearTurn(\'' + p + '\')">Apagar</button></div>' +
+    '<div class="tStat"><div class="status"></div></div></details>';
+}
+function netEl(p, cls) { return document.querySelector('#net-' + p + ' .' + cls + (cls === 'tStat' ? ' .status' : '')); }
+function renderNet() {
+  const t = myTurn();
+  ['s', 'v'].forEach(p => {
+    if (!$('net-' + p)) return;
+    netEl(p, 'tUrl').value = t ? (t.label || t.urls.join(' ')) : '';
+    netEl(p, 'tUser').value = t ? t.username || '' : '';
+    netEl(p, 'tPass').value = t ? t.credential || '' : '';
+    setStatus(netEl(p, 'tStat'), t ? '✔ Servidor TURN próprio ativo' : 'A usar só os servidores públicos gratuitos.', t ? 'ok' : '');
+  });
+}
+async function saveTurn(p) {
+  const label = netEl(p, 'tUrl').value.trim(), urls = turnUrls(label);
+  const cfg = { urls, username: netEl(p, 'tUser').value.trim(), credential: netEl(p, 'tPass').value, label };
+  const st = netEl(p, 'tStat');
+  if (!urls.length) { setStatus(st, 'Endereço inválido. Ex.: relay1.expressturn.com:3478', 'err'); return; }
+  try { new RTCPeerConnection({ iceServers: [cfg] }).close(); }
+  catch (e) { setStatus(st, 'O browser recusou estes dados (' + e.name + '). Confirma o endereço, o utilizador e a palavra-passe.', 'err'); return; }
+  setStatus(st, 'A testar o servidor…', 'warn');
+  const ok = await testTurn(cfg);
+  if (!ok) { setStatus(st, '✖ O servidor não respondeu. Confirma os dados (não foi guardado).', 'err'); return; }
+  try { localStorage.setItem('vx-turn', JSON.stringify(cfg)); } catch (e) {}
+  renderNet();
+  setStatus(st, '✔ Servidor TURN a funcionar e guardado.', 'ok');
+}
+function clearTurn(p) { try { localStorage.removeItem('vx-turn'); } catch (e) {} renderNet(); }
+// Pede ao servidor um endereço de retransmissão ("relay"): se o der, os dados estão certos
+function testTurn(cfg, ms) {
+  return new Promise(res => {
+    let pc, done = false;
+    const end = v => { if (done) return; done = true; try { pc.close(); } catch (e) {} res(v); };
+    try {
+      pc = new RTCPeerConnection({ iceServers: [cfg], iceTransportPolicy: 'relay' });
+      pc.createDataChannel('t');
+      pc.onicecandidate = e => { if (e.candidate && / typ relay /.test(e.candidate.candidate)) end(true); };
+      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') setTimeout(() => end(false), 200); };
+      pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => end(false));
+    } catch (e) { end(false); return; }
+    setTimeout(() => end(false), ms || 9000);
+  });
+}
+document.querySelectorAll('.netph').forEach(e => { e.outerHTML = netBox(e.dataset.p); });
+renderNet();
+
+/* ---------------- iPhone / iPad ---------------- */
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (IS_IOS) {
+  $('iosNote').innerHTML = richText('⚠️ ') + '<b>No iPhone/iPad, nenhum site consegue transmitir o ecrã nem o som</b> (a Apple não deixa: o Safari não tem partilha de ecrã). ' +
+    'Para o <b>som do iPhone</b> sair no carro, liga o iPhone ao carro por <b>Bluetooth</b> e escolhe o carro como saída de som. ' +
+    'Para a imagem, transmite a partir do PC ou do Android, ou abre o site/vídeo diretamente no browser do ecrã de destino.';
+  $('iosNote').classList.remove('hidden');
+}
+
 /* ---------------- ARRANQUE ---------------- */
+$('mode').value = sMode;
+$('adapt').checked = sAdapt; setAdapt(sAdapt);
+$('latSel').value = latChoice();
 const last = store('tcast-last'); if (last) $('code').value = last;
 { const sq = store('tcast-q'), sf = store('tcast-fps');
   if (sq && QUALITY[sq]) $('quality').value = sq;
