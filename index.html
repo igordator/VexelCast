@@ -289,7 +289,7 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
-const APP_VERSION = '3.5';
+const APP_VERSION = '3.6';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
@@ -609,7 +609,6 @@ async function viewerMsg(m) {
     const remote = vRemote = { src: m.src, cid: p.connectionId, accepted: false, sas: null, fp: sdpFingerprint(p.sdp.sdp).toUpperCase(),
                                lk: new Set(), rk: new Set(), ever: false };
     kindsFromSdp(p.sdp.sdp, remote.rk);
-    const held = [];
     vPending = [];
     vStream = new MediaStream();
     const pc = vPc = new RTCPeerConnection(rtcConfig());
@@ -632,9 +631,10 @@ async function viewerMsg(m) {
     pc.onicecandidate = e => {
       if (!(e.candidate && e.candidate.candidate)) return;
       remote.lk.add(candKind(e.candidate.candidate));
-      const c = { candidate: candJson(e.candidate), type: 'media', connectionId: remote.cid };
-      // até carregares em Aceitar, o ecrã de destino não diz a ninguém como chegar até ele
-      if (remote.accepted) vSig.send('CANDIDATE', remote.src, c); else held.push(c);
+      // enviados logo: se ficassem retidos até "Aceitar", a ligação ficava meio-aberta e os routers
+      // cortavam-na ("instável"). A segurança está noutro lado: nada aparece neste ecrã sem Aceitar,
+      // e o PC/telemóvel não envia imagem sem confirmares o código de 4 números.
+      vSig.send('CANDIDATE', remote.src, { candidate: candJson(e.candidate), type: 'media', connectionId: remote.cid });
     };
     pc.oniceconnectionstatechange = () => {
       if (pc !== vPc) return;
@@ -677,13 +677,16 @@ async function viewerMsg(m) {
       const ans = await pc.createAnswer();
       const sdp = preferInSdp(ans.sdp, vCodec);
       await pc.setLocalDescription({ type: 'answer', sdp });
+      if (pc !== vPc) return;
+      // resposta enviada já (a ligação de rede começa enquanto decides; ainda não mostra nada)
+      vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp }, type: 'media', connectionId: remote.cid });
       const code = remote.sas = await sasFrom(p.sdp.sdp, sdp);
       if (pc !== vPc) return;
       const accept = () => {
         if (pc !== vPc || remote.accepted) return;
         remote.accepted = true; hideAsk();
-        vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp }, type: 'media', connectionId: remote.cid });
-        held.forEach(c => vSig.send('CANDIDATE', remote.src, c)); held.length = 0;
+        // avisa o PC/telemóvel de que aceitaste (vai pelo servidor, como os endereços)
+        vSig.send('CANDIDATE', remote.src, { type: 'media', connectionId: remote.cid, accepted: true });
         if (vWatch) { vWatch.start = Date.now(); if (['connected', 'completed'].includes(pc.iceConnectionState)) vWatch.connectedAt = Date.now(); }
         setStatus($('vStatus'), 'Aceite. À espera da confirmação no PC/telemóvel…', 'warn');
         $('waitOv').innerHTML = 'À espera que confirmes o código <b>' + code + '</b><br>no PC ou no telemóvel…';
@@ -694,7 +697,7 @@ async function viewerMsg(m) {
         if (pc !== vPc) return;
         hideAsk();
         vSig.send('LEAVE', remote.src, { type: 'media', connectionId: remote.cid, declined: true });
-        backToCode(why || 'Ligação recusada.');
+        backToCode(why || 'Ligação recusada.');   // fecha a ligação: nada foi mostrado
       };
       if (auto) accept(); else { setStatus($('vStatus'), 'Pedido de ligação: confirma o código de verificação', 'warn'); askUser(code, accept, decline); }
     } catch (e) {
@@ -921,8 +924,9 @@ $('player').addEventListener('click', e => { if (e.target.id === 'video') { $('q
 /* ---------------- PC (TRANSMITIR) ---------------- */
 let sSig = null, sPc = null, sStream = null, sDst = null, sCid = null, sPending = [], sConnected = false, sCtrl = null, sRestart = null;
 let sHeld = [], sConfirmed = false, sAuto = false, sSas = null, sAnswerFp = '', sIceTimer = null, sIceTries = 0;
-let sLK = new Set(), sRK = new Set(), sEver = false, sNoPathTimer = null;
+let sLK = new Set(), sRK = new Set(), sEver = false, sNoPathTimer = null, sAccepted = false;
 function showSending() {
+  if (!sAccepted) { setStatus($('sStatus'), 'Código confirmado. Falta carregar em “Aceitar” no ecrã de destino…', 'warn'); return; }
   const hasAudio = sStream && sStream.getAudioTracks().length > 0;
   const vt = sStream && sStream.getVideoTracks()[0], st = vt ? vt.getSettings() : {};
   setStatus($('sStatus'), '✔ A transmitir para o ecrã' + (hasAudio ? ' (com som)' : ' (sem som — marca a opção de áudio)') +
@@ -1091,7 +1095,7 @@ async function makeOffer() {
       if (m.q) setQuality(m.q, m.fps, 'tesla');
     }
   };
-  sLK = new Set(); sRK = new Set(); sEver = false; clearTimeout(sNoPathTimer); $('lanBox').classList.add('hidden');
+  sLK = new Set(); sRK = new Set(); sEver = false; sAccepted = false; clearTimeout(sNoPathTimer); $('lanBox').classList.add('hidden');
   pc.onicecandidate = e => {
     if (e.candidate && e.candidate.candidate) {
       if (pc === sPc) sLK.add(candKind(e.candidate.candidate));
@@ -1141,9 +1145,14 @@ async function senderMsg(m) {
       if (sAuto) { sAuto = false; await confirmSend(true); }
       else {
         $('sasPc').textContent = sSas; $('verify').classList.remove('hidden');
-        setStatus($('sStatus'), 'O ecrã aceitou. Confirma o código de verificação abaixo.', 'warn');
+        setStatus($('sStatus'), sAccepted ? 'O ecrã aceitou. Confirma o código de verificação abaixo.' : 'Confirma o código de verificação abaixo (e carrega em Aceitar no ecrã de destino).', 'warn');
       }
     } catch (e) { stopSending('O ecrã recusou a ligação (' + e.message + ').', 'err'); }
+  } else if (m.type === 'CANDIDATE' && p.connectionId === sCid && p.accepted) {
+    sAccepted = true;
+    if (!sConfirmed && !$('verify').classList.contains('hidden')) setStatus($('sStatus'), 'O ecrã aceitou. Confirma o código de verificação abaixo.', 'warn');
+    else if (sConfirmed && !sConnected) setStatus($('sStatus'), 'O ecrã aceitou. A ligar…', 'warn');
+    else if (sConfirmed && sConnected) showSending();
   } else if (m.type === 'CANDIDATE' && p.connectionId === sCid && p.candidate && p.candidate.candidate) {
     sRK.add(candKind(p.candidate.candidate));
     if (sPc.remoteDescription) sPc.addIceCandidate(p.candidate).catch(() => {});
