@@ -135,6 +135,7 @@
     (incluindo a Tesla, Inc.). Nomes como “Tesla” são marcas dos seus titulares, usadas só para indicar compatibilidade.
     Num carro, usa apenas com o veículo estacionado. És responsável pelo conteúdo que transmites.
     Não guardamos dados. <a href="termos.html">Termos de utilização e privacidade</a>
+    <br><span class="ver"></span>
   </footer>
 </section>
 
@@ -166,7 +167,7 @@
   </div>
   <div class="netph" data-p="v"></div>
   <button class="btn ghost" onclick="newCode()">Gerar outro código</button>
-  <footer class="legal">Projeto independente, sem ligação a nenhum fabricante. Num carro, usa só estacionado. <a href="termos.html">Termos e privacidade</a></footer>
+  <footer class="legal">Projeto independente, sem ligação a nenhum fabricante. Num carro, usa só estacionado. <a href="termos.html">Termos e privacidade</a> · <span class="ver"></span></footer>
 </section>
 
 <!-- PC: TRANSMITIR -->
@@ -232,7 +233,7 @@
   </div>
   <button class="btn ghost" onclick="location.href=location.pathname"><i data-ic="back"></i> Voltar</button>
   <footer class="legal">Ao transmitir, confirmas que tens direito a mostrar esse conteúdo e, se o destino for um carro, que está estacionado.
-    Projeto independente, sem ligação a nenhum fabricante. <a href="termos.html">Termos e privacidade</a></footer>
+    Projeto independente, sem ligação a nenhum fabricante. <a href="termos.html">Termos e privacidade</a> · <span class="ver"></span></footer>
 </section>
 
 <!-- TESLA: PEDIDO DE LIGAÇÃO -->
@@ -288,6 +289,7 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
+const APP_VERSION = '3.4';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
@@ -459,7 +461,7 @@ function netReason(L, R) {
   if (onlyMdns(L) && onlyMdns(R))
     return 'Os dois browsers esconderam o endereço na rede local (mDNS) e o router não deixou descobri-lo' +
       (relay ? '' : ', e os servidores de retransmissão gratuitos não responderam') +
-      '. Solução: no PC, carrega em “Ligação na mesma rede”.';
+      '. Solução: carrega em “Ligação na mesma rede” no PC que transmite (e, se o ecrã de destino for um computador, também lá, em “Ligar entre redes diferentes”).';
   if (!relay)
     return 'Não há caminho direto entre os aparelhos e os servidores de retransmissão gratuitos não responderam nesta rede. ' +
       'Se estão no mesmo Wi-Fi, o router pode estar a isolar os aparelhos (rede de convidados ou “isolamento de clientes”). ' +
@@ -1159,10 +1161,12 @@ async function enableLan() {
   try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(t => t.stop()); store('vx-lan', '1'); return true; }
   catch (e) { return false; }
 }
-async function lanRetry() {
+async function lanRetry(p) {
   const ok = await enableLan();
-  if (!ok) { setStatus($('sStatus'), 'Sem essa permissão não dá para ativar a ligação na mesma rede. (O microfone nunca é usado: é desligado logo a seguir.)', 'err'); return; }
-  renderLan();
+  const where = p === 'v' ? document.querySelector('#net-v .lanState') : $('sStatus');
+  if (!ok) { setStatus(where, 'Sem essa permissão não dá para ativar a ligação na mesma rede. (O microfone nunca é usado: é desligado logo a seguir.)', 'err'); return; }
+  await renderLan();
+  if (p === 'v') { setStatus(where, '✔ Ativada neste ecrã. Agora volta a ligar a partir do PC/telemóvel.', 'ok'); return; }
   if (sStream && sSig) retryConnection();
   else setStatus($('sStatus'), '✔ Ligação na mesma rede ativada. Agora carrega em Começar.', 'ok');
 }
@@ -1284,8 +1288,10 @@ function netBox(p) {
     '<div class="row"><button class="btn ghost" onclick="saveTurn(\'' + p + '\')">Guardar e testar</button>' +
     '<button class="btn ghost" onclick="clearTurn(\'' + p + '\')">Apagar</button></div>' +
     '<div class="tStat"><div class="status"></div></div>' +
-    (p === 's' ? '<hr style="border-color:#2a3350"><b>Mesmo Wi-Fi e não liga?</b> Ativa a ligação na mesma rede (vê a explicação ao carregar).' +
-      '<div class="row"><button class="btn ghost lanBtn" onclick="lanRetry()">Ligação na mesma rede</button></div><div class="status lanState"></div>' : '') +
+    '<hr style="border-color:#2a3350"><b>Mesma rede (mesmo router) e não liga?</b> ' +
+      (p === 's' ? 'Carrega aqui neste PC.' : 'Se este ecrã for um computador ou telemóvel com Chrome, carrega aqui também (num carro não é preciso).') +
+      ' O Chrome pede o microfone só para deixar mostrar o endereço deste aparelho na rede local: o microfone nunca é usado.' +
+      '<div class="row"><button class="btn ghost lanBtn" onclick="lanRetry(\'' + p + '\')">Ligação na mesma rede</button></div><div class="status lanState"></div>' +
     '<hr style="border-color:#2a3350"><b>Testar a rede deste aparelho</b>' +
     '<div class="row"><button class="btn ghost tNet" onclick="testNet(\'' + p + '\')">Testar a rede</button></div><div class="tRes"></div></details>';
 }
@@ -1332,6 +1338,7 @@ function testTurn(cfg, ms) {
 }
 document.querySelectorAll('.netph').forEach(e => { e.outerHTML = netBox(e.dataset.p); });
 renderNet(); renderLan();
+document.querySelectorAll('.ver').forEach(e => { e.textContent = 'Versão ' + APP_VERSION; });
 
 // Teste de rede: tenta obter cada tipo de endereço, um servidor de cada vez
 function gatherKinds(servers, relayOnly, ms) {
