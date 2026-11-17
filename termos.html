@@ -19,7 +19,7 @@
 <body>
 <main>
   <h1>Vexel<span>Cast</span> · Termos de utilização e privacidade</h1>
-  <p class="muted">Última atualização: 17 de novembro de 2026 (v3)</p>
+  <p class="muted">Última atualização: 17 de novembro de 2026 (v4)</p>
 
   <div class="box">
     <p><b>Resumo:</b> o VexelCast é um projeto pessoal, gratuito e sem fins lucrativos para partilhar o ecrã de um PC ou telemóvel com o browser de outro aparelho (carro, TV, tablet, computador).
@@ -73,9 +73,7 @@
   </ul>
 
   <h2>7. Segurança da ligação</h2>
-  <p>Cada vez que abres a página no ecrã de destino é gerado um código novo de 8 caracteres, que esse aparelho nunca repete; o servidor nunca deixa dois aparelhos ligados terem o mesmo código. Antes de aparecer qualquer imagem, o ecrã de destino pergunta se queres aceitar a ligação
-  e os dois aparelhos mostram o mesmo <b>código de verificação de 4 números</b>. Esse código é calculado a partir das chaves de encriptação dos dois lados.
-  Só aceites se os números forem iguais. Se não estiveres à espera de nenhuma ligação, recusa.</p>
+  <p>Cada vez que abres a página no ecrã de destino é gerado um código novo de 8 caracteres, que esse aparelho nunca repete. O código funciona como uma <b>chave secreta</b>: dele são calculados o endereço no servidor de sinalização (o servidor nunca vê o código) e uma chave com que os dois aparelhos assinam a ligação, incluindo as chaves de encriptação. O ecrã de destino só aceita um aparelho que prove saber o código, e o aparelho que transmite só aceita a resposta desse ecrã. Podes trocar o código a qualquer momento em “Gerar outro código”. Enquanto está a receber, o ecrã recusa outros aparelhos. Não mostres o código a quem não queres que se ligue.</p>
 
   <h2>8. Alterações e fim do serviço</h2>
   <p>O VexelCast pode ser alterado, interrompido ou descontinuado a qualquer momento, sem aviso. Estes termos podem ser atualizados. A data no topo indica a última versão.</p>

@@ -88,12 +88,6 @@
   .fsbox small { color: var(--muted); font-size: 14px; max-width: 520px; text-align: center; }
   .sas { font-size: 64px; font-weight: 800; letter-spacing: 14px; font-variant-numeric: tabular-nums; color: #fff;
     background: #0b1020; border: 3px solid var(--blue); border-radius: 18px; padding: 6px 18px 6px 32px; display: inline-block; }
-  #ask { position: fixed; inset: 0; background: rgba(0,0,0,.82); display: flex; align-items: center; justify-content: center; z-index: 50; }
-  #ask .box { background: var(--card); border: 2px solid #3b4566; border-radius: 22px; padding: 28px; width: min(560px, 92vw);
-    display: flex; flex-direction: column; gap: 16px; align-items: center; text-align: center; }
-  #ask h2 { font-size: 28px; }
-  #ask .row { display: flex; gap: 14px; width: 100%; }
-  #ask .row .btn { flex: 1; font-size: 24px; padding: 18px; }
   .verify { border: 2px solid var(--blue); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; background: rgba(59,130,246,.08); }
   .verify .row { display: flex; gap: 10px; width: 100%; }
   .verify .row .btn { flex: 1; }
@@ -202,6 +196,7 @@
     </select>
     <label class="switch"><input type="checkbox" id="adapt" checked onchange="setAdapt(this.checked, 'pc')"> Ajuste automático à rede</label>
     <div class="hint" id="adaptHint"></div>
+    <div class="hint">Na primeira vez, o Chrome pede o <b>microfone</b>: é só para os aparelhos se encontrarem na mesma rede. Nunca é usado.</div>
     <div class="hint">Podes mudar a qualidade a meio da transmissão, aqui ou no ecrã de destino (<i data-ic="gear"></i>).</div>
     <button class="btn go" id="goBtn" onclick="startSending()"><i data-ic="play"></i> Começar a transmitir</button>
     <button class="btn stop" id="stopBtn" onclick="stopSending()" style="display:none"><i data-ic="stop"></i> Parar</button>
@@ -211,15 +206,6 @@
       <div style="color:var(--muted)">Se os dois aparelhos estão no <b>mesmo Wi-Fi</b>, carrega aqui. O Chrome pede autorização para o microfone:
         é só para ele deixar o PC mostrar o seu endereço na rede local. <b>O microfone nunca é usado</b> (é desligado logo a seguir).</div>
       <button class="btn go lanBtn" onclick="lanRetry()">Ligação na mesma rede</button>
-    </div>
-    <div class="verify hidden" id="verify">
-      <div><b>Código de verificação</b></div>
-      <div class="sas" id="sasPc">0000</div>
-      <div style="color:var(--muted)">Confirma que o ecrã de destino mostra <b>exatamente</b> estes 4 números e que lá carregaste em <b>Aceitar</b>. Só depois disso a tua imagem começa a ser enviada.</div>
-      <div class="row">
-        <button class="btn stop" id="verifyNo" onclick="confirmSend(false)">Não é igual</button>
-        <button class="btn go" id="verifyYes" onclick="confirmSend(true)">É igual, começar</button>
-      </div>
     </div>
   </div>
   <div class="ios hidden" id="iosNote"></div>
@@ -236,20 +222,6 @@
     Projeto independente, sem ligação a nenhum fabricante. <a href="termos.html">Termos e privacidade</a> · <span class="ver"></span></footer>
 </section>
 
-<!-- TESLA: PEDIDO DE LIGAÇÃO -->
-<div id="ask" class="hidden">
-  <div class="box">
-    <h2>Um aparelho quer ligar-se a este ecrã</h2>
-    <div style="color:var(--muted); font-size:18px">Código de verificação</div>
-    <div class="sas" id="sasTesla">0000</div>
-    <div style="color:var(--muted); font-size:17px">Só aceites se o PC ou o telemóvel mostrar <b>estes mesmos 4 números</b>. Se não estiveres à espera de ninguém, recusa.</div>
-    <div class="row">
-      <button class="btn stop" id="askNo">Recusar</button>
-      <button class="btn go" id="askYes">Aceitar</button>
-    </div>
-    <div style="color:var(--muted); font-size:14px" id="askTimer"></div>
-  </div>
-</div>
 
 <!-- TESLA: LEITOR -->
 <div id="player">
@@ -289,7 +261,7 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
-const APP_VERSION = '3.6';
+const APP_VERSION = '4.0';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
@@ -441,20 +413,43 @@ function randCode() {
 }
 // Guardado só nesta sessão (separador): cada vez que abres a página há um código novo
 function sstore(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v); } catch (e) { return null; } }
-/* Código de verificação (como no emparelhamento Bluetooth): calculado a partir das "impressões
-   digitais" de encriptação dos DOIS lados da ligação. Se alguém se meter no meio, os números
-   dos dois aparelhos ficam diferentes. */
 function sdpFingerprint(sdp) { return ((sdp || '').match(/a=fingerprint:\S+ ([0-9A-Fa-f:]+)/) || [])[1] || ''; }
-async function sasFrom(sdpA, sdpB) {
-  const parts = [sdpFingerprint(sdpA).toUpperCase(), sdpFingerprint(sdpB).toUpperCase()].sort();
-  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(parts.join('|'))));
-  return String(((h[0] << 8) | h[1]) % 10000).padStart(4, '0');
-}
 function rnd(n) {
   const c = 'abcdefghijklmnopqrstuvwxyz0123456789'; let s = '';
   for (const x of crypto.getRandomValues(new Uint8Array(n))) s += c[x % c.length];
   return s;
 }
+/* ---------- SEGURANÇA SEM PASSOS EXTRA ----------
+   O código de 8 caracteres é uma chave secreta partilhada (só aparece no ecrã de destino).
+   Dele tiram-se, com PBKDF2 (lento de propósito, para não dar para adivinhar por tentativas):
+     - o "endereço" no servidor de sinalização (o servidor nunca vê o código em si);
+     - uma chave HMAC com que cada lado assina a sua parte da ligação, incluindo a impressão digital
+       de encriptação (DTLS). O ecrã só aceita um PC que prove saber o código, e o PC só aceita a
+       resposta desse ecrã. Nem o servidor consegue meter-se no meio: substitui os 4 números. */
+const KDF_SALT = 'vexelcast-v4';
+async function codeKeys(code) {
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey('raw', enc.encode(normCode(code)), 'PBKDF2', false, ['deriveBits']);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: enc.encode(KDF_SALT), iterations: 150000, hash: 'SHA-256' }, base, 512));
+  const id = PREFIX + [...bits.slice(0, 16)].map(b => b.toString(16).padStart(2, '0')).join('');
+  const key = await crypto.subtle.importKey('raw', bits.slice(16, 48), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+  return { id, key };
+}
+async function authSign(key, msg) {
+  const t = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg)));
+  return btoa(String.fromCharCode(...t));
+}
+async function authCheck(key, msg, tag) {
+  try {
+    const t = Uint8Array.from(atob(String(tag || '')), c => c.charCodeAt(0));
+    return t.length === 32 && await crypto.subtle.verify('HMAC', key, t, new TextEncoder().encode(msg));
+  } catch (e) { return false; }
+}
+const fpOf = sdp => sdpFingerprint(sdp).toUpperCase();
+const offerMsg = (cid, offerSdp) => 'offer|' + cid + '|' + fpOf(offerSdp);
+const answerMsg = (cid, offerSdp, answerSdp) => 'answer|' + cid + '|' + fpOf(offerSdp) + '|' + fpOf(answerSdp);
+
 function candJson(c) { return { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex }; }
 /* Diagnóstico de rede: que tipos de "endereço" (candidato ICE) cada lado conseguiu.
    mdns = endereço local escondido pelo browser (nome .local); host = endereço local visível;
@@ -517,15 +512,6 @@ const Q_LABEL = { 360: '360p', 540: '540p', 720: '720p', 1080: '1080p', max: 'M�
 const CODECS = ['vp8', 'h264', 'vp9'];
 const CODEC_LABEL = { auto: 'Automático', vp8: 'VP8', h264: 'H.264', vp9: 'VP9' };
 let vCodec = null, vFailed = [], vWatch = null, vDiagForced = false, vDiagMsg = '', vExpect = null, vAskTimer = null;
-function askUser(code, onYes, onNo) {
-  $('sasTesla').textContent = code;
-  $('ask').classList.remove('hidden');
-  let left = window.ASK_SECONDS || 90;
-  const tick = () => { $('askTimer').textContent = 'Recusa automaticamente daqui a ' + left + ' s'; if (left-- <= 0) onNo('Ninguém aceitou a tempo.'); };
-  clearInterval(vAskTimer); tick(); vAskTimer = setInterval(tick, 1000);
-  $('askYes').onclick = onYes; $('askNo').onclick = () => onNo('Ligação recusada.');
-}
-function hideAsk() { clearInterval(vAskTimer); vAskTimer = null; $('ask').classList.add('hidden'); }
 function codecChoice() { const c = store('tcast-codec'); return CODECS.includes(c) ? c : 'auto'; }
 function codecToUse() {
   const c = codecChoice();
@@ -580,15 +566,22 @@ function vToast(msg) {
   setTimeout(() => { if (vDiagMsg === msg) { vDiagMsg = ''; if (!vDiagForced) $('diag').classList.remove('on'); } }, 7000);
 }
 
-function startViewer(forceNew) {
+let vKeys = null, vBad = 0, vStartTok = 0, vNote = '';
+async function startViewer(forceNew) {
   show('viewer');
+  const tok = ++vStartTok;
   let code = forceNew ? null : sstore('tcast-code');
   if (!code || !CODE_RE.test(normCode(code))) { code = randCode(); sstore('tcast-code', code); }
   $('myCode').textContent = code;
+  setStatus($('vStatus'), 'A preparar…');
+  if (vSig) { vSig.close(); vSig = null; }
+  vKeys = null; vBad = 0;
+  const keys = await codeKeys(code);
+  if (tok !== vStartTok) return;   // entretanto pediu-se outro código
+  vKeys = keys;
   setStatus($('vStatus'), 'A ligar ao servidor…');
-  if (vSig) vSig.close();
-  vSig = new Signal(PREFIX + normCode(code), {
-    open: () => { if (!vPc) setStatus($('vStatus'), 'Pronto ✔ À espera do PC/telemóvel…', 'ok'); },
+  vSig = new Signal(keys.id, {
+    open: () => { if (!vPc) setStatus($('vStatus'), (vNote ? vNote + ' ' : '') + 'Pronto ✔ À espera do PC/telemóvel…', 'ok'); vNote = ''; },
     lost: () => { if (!vPc) setStatus($('vStatus'), 'Sem ligação ao servidor, a tentar outra vez… (o carro tem internet?)', 'warn'); },
     error: t => { if (t === 'id-taken') startViewer(true); else setStatus($('vStatus'), 'Erro do servidor. Recarrega a página.', 'err'); },
     message: m => viewerMsg(m)
@@ -598,15 +591,27 @@ function newCode() { startViewer(true); }
 
 async function viewerMsg(m) {
   const p = m.payload || {};
+  if (m.type === 'OFFER') {
+    // 1) Só quem sabe o código consegue assinar a oferta. O resto é ignorado em silêncio.
+    const keys = vKeys;
+    if (!keys || !p.sdp || !p.sdp.sdp || !(await authCheck(keys.key, offerMsg(p.connectionId, p.sdp.sdp), p.auth))) {
+      if (keys && ++vBad >= 5) { vNote = 'Houve várias tentativas com o código errado: código trocado por segurança.'; newCode(); }
+      return;
+    }
+    if (keys !== vKeys) return;
+    // 2) Um aparelho de cada vez: se já está a receber de outro, recusa
+    if (vPc && vRemote && vRemote.accepted && m.src !== vRemote.src && ['connected', 'completed'].includes(vPc.iceConnectionState)) {
+      vSig.send('LEAVE', m.src, { type: 'media', connectionId: p.connectionId, busy: true });
+      return;
+    }
+  }
   if (m.type === 'OFFER' && p.type === 'media' && p.sdp && p.sdp.sdp && vPc && vRemote && vRemote.accepted &&
       m.src === vRemote.src && p.connectionId === vRemote.cid) {
     renegotiate(p.sdp.sdp);   // o mesmo aparelho a reparar a ligação (mudou de rede, etc.)
   } else if (m.type === 'OFFER' && p.type === 'media' && p.sdp && p.sdp.sdp) {
-    // religar pedido por este ecrã (troca de formato): aceita sem perguntar outra vez
-    const auto = !!(vExpect && vExpect.src === m.src && Date.now() < vExpect.until);
     vExpect = null;
     closeViewerPc();
-    const remote = vRemote = { src: m.src, cid: p.connectionId, accepted: false, sas: null, fp: sdpFingerprint(p.sdp.sdp).toUpperCase(),
+    const remote = vRemote = { src: m.src, cid: p.connectionId, accepted: false, offerSdp: p.sdp.sdp, fp: sdpFingerprint(p.sdp.sdp).toUpperCase(),
                                lk: new Set(), rk: new Set(), ever: false };
     kindsFromSdp(p.sdp.sdp, remote.rk);
     vPending = [];
@@ -631,16 +636,13 @@ async function viewerMsg(m) {
     pc.onicecandidate = e => {
       if (!(e.candidate && e.candidate.candidate)) return;
       remote.lk.add(candKind(e.candidate.candidate));
-      // enviados logo: se ficassem retidos até "Aceitar", a ligação ficava meio-aberta e os routers
-      // cortavam-na ("instável"). A segurança está noutro lado: nada aparece neste ecrã sem Aceitar,
-      // e o PC/telemóvel não envia imagem sem confirmares o código de 4 números.
+      // enviados logo (se ficassem retidos, a ligação ficava meio-aberta e os routers cortavam-na).
+      // Só chegamos aqui depois de a oferta ter a assinatura certa (quem a enviou sabe o código).
       vSig.send('CANDIDATE', remote.src, { candidate: candJson(e.candidate), type: 'media', connectionId: remote.cid });
     };
     pc.oniceconnectionstatechange = () => {
       if (pc !== vPc) return;
       const s = pc.iceConnectionState;
-      // a ligação pode ficar pronta ANTES de carregares em Aceitar (os aparelhos encontram-se em
-      // segundo plano; nada é mostrado nem enviado até aceitares e confirmares o código)
       if (s === 'connected' || s === 'completed') remote.ever = true;
       if (!remote.accepted) return;
       if (s === 'connected' || s === 'completed') {
@@ -678,28 +680,15 @@ async function viewerMsg(m) {
       const sdp = preferInSdp(ans.sdp, vCodec);
       await pc.setLocalDescription({ type: 'answer', sdp });
       if (pc !== vPc) return;
-      // resposta enviada já (a ligação de rede começa enquanto decides; ainda não mostra nada)
-      vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp }, type: 'media', connectionId: remote.cid });
-      const code = remote.sas = await sasFrom(p.sdp.sdp, sdp);
+      // resposta assinada com a chave do código: o PC sabe que é mesmo este ecrã
+      const auth = await authSign(vKeys.key, answerMsg(remote.cid, p.sdp.sdp, sdp));
       if (pc !== vPc) return;
-      const accept = () => {
-        if (pc !== vPc || remote.accepted) return;
-        remote.accepted = true; hideAsk();
-        // avisa o PC/telemóvel de que aceitaste (vai pelo servidor, como os endereços)
-        vSig.send('CANDIDATE', remote.src, { type: 'media', connectionId: remote.cid, accepted: true });
-        if (vWatch) { vWatch.start = Date.now(); if (['connected', 'completed'].includes(pc.iceConnectionState)) vWatch.connectedAt = Date.now(); }
-        setStatus($('vStatus'), 'Aceite. À espera da confirmação no PC/telemóvel…', 'warn');
-        $('waitOv').innerHTML = 'À espera que confirmes o código <b>' + code + '</b><br>no PC ou no telemóvel…';
-        $('waitOv').style.display = 'block';
-        playStream(vStream);
-      };
-      const decline = why => {
-        if (pc !== vPc) return;
-        hideAsk();
-        vSig.send('LEAVE', remote.src, { type: 'media', connectionId: remote.cid, declined: true });
-        backToCode(why || 'Ligação recusada.');   // fecha a ligação: nada foi mostrado
-      };
-      if (auto) accept(); else { setStatus($('vStatus'), 'Pedido de ligação: confirma o código de verificação', 'warn'); askUser(code, accept, decline); }
+      vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp }, type: 'media', connectionId: remote.cid, auth });
+      remote.accepted = true;
+      if (vWatch) { vWatch.start = Date.now(); if (['connected', 'completed'].includes(pc.iceConnectionState)) vWatch.connectedAt = Date.now(); }
+      setStatus($('vStatus'), 'A ligar…', 'warn');
+      $('waitOv').style.display = 'block'; updateWaitText();
+      playStream(vStream);
     } catch (e) {
       backToCode('Erro na ligação (' + e.message + ').');
     }
@@ -712,6 +701,18 @@ async function viewerMsg(m) {
   }
 }
 
+/* Texto do quadro de espera no ecrã de destino: diz SEMPRE em que passo está, para uma foto chegar
+   para perceber o problema (código por confirmar? rede sem caminho? a ligar?). */
+function updateWaitText() {
+  const r = vRemote, ov = $('waitOv');
+  if (!r || !r.accepted || ov.style.display === 'none' || r.lostAt) return;
+  const ice = vPc ? vPc.iceConnectionState : '';
+  const linked = ice === 'connected' || ice === 'completed';
+  const slow = vWatch && Date.now() - vWatch.start > 12000;
+  let h = linked ? 'A receber a imagem…' : 'A ligar os dois aparelhos…';
+  if (!linked && slow) h += '<div style="margin-top:12px;font-size:.8em;color:#fbbf24">' + richText('⚠️ Ainda não ligou: ' + netReason(r.lk, r.rk)) + '</div>';
+  ov.innerHTML = h;
+}
 async function renegotiate(sdp) {
   const pc = vPc, remote = vRemote;
   if (sdpFingerprint(sdp).toUpperCase() !== remote.fp) return;   // não é o mesmo aparelho: ignorar
@@ -722,7 +723,8 @@ async function renegotiate(sdp) {
     const a = preferInSdp(ans.sdp, vCodec);
     await pc.setLocalDescription({ type: 'answer', sdp: a });
     if (pc !== vPc) return;
-    vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp: a }, type: 'media', connectionId: remote.cid });
+    const auth = await authSign(vKeys.key, answerMsg(remote.cid, sdp, a));
+    vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp: a }, type: 'media', connectionId: remote.cid, auth });
     window.__renegotiations = (window.__renegotiations || 0) + 1;
   } catch (e) { console.warn('religar', e); }
 }
@@ -748,7 +750,6 @@ function setLatency(l) {
 function closeViewerPc() {
   if (vRemote) clearTimeout(vRemote.lostTimer);
   if (vPc) { try { vPc.close(); } catch (e) {} }
-  hideAsk();
   $('waitOv').style.display = 'none';
   vWatch = null;
   vPc = null; vRemote = null; vPending = []; vCtrl = null; vQ = null;
@@ -816,6 +817,7 @@ async function updateInfo() {
   const v = $('video'), now = Date.now(), w = vWatch || {};
   if (!vRemote || !vRemote.accepted) return;
   if (d.ice === 'connected' || d.ice === 'completed') { vRemote.ever = true; if (!w.connectedAt) w.connectedAt = now; }
+  updateWaitText();
   if (d.bytes > 0 && !w.bytesAt) w.bytesAt = now;
   // 1) Ligação não passa
   if (!w.connectedAt && now - w.start > 15000 && !w.warnedNet) {
@@ -828,7 +830,7 @@ async function updateInfo() {
   }
   // 3) Imagem descodificada: guardar o formato que funciona
   if (d.frames > 0 && !w.framesAt) {
-    w.framesAt = now; if (codecChoice() === 'auto') store('tcast-codec-ok', vCodec);
+    w.framesAt = now; vRemote.shown = true; if (codecChoice() === 'auto') store('tcast-codec-ok', vCodec);
     $('waitOv').style.display = 'none';
     setStatus($('vStatus'), 'Ligado ✔', 'ok');
     if (v.srcObject && v.srcObject.getAudioTracks().length && v.muted) { $('unmute').innerHTML = richText('🔊 Toca aqui para ligar o som'); $('unmute').style.display = 'block'; }
@@ -923,24 +925,17 @@ $('player').addEventListener('click', e => { if (e.target.id === 'video') { $('q
 
 /* ---------------- PC (TRANSMITIR) ---------------- */
 let sSig = null, sPc = null, sStream = null, sDst = null, sCid = null, sPending = [], sConnected = false, sCtrl = null, sRestart = null;
-let sHeld = [], sConfirmed = false, sAuto = false, sSas = null, sAnswerFp = '', sIceTimer = null, sIceTries = 0;
-let sLK = new Set(), sRK = new Set(), sEver = false, sNoPathTimer = null, sAccepted = false;
+let sConfirmed = false, sAuto = false, sAnswerFp = '', sIceTimer = null, sIceTries = 0;
+let sLK = new Set(), sRK = new Set(), sEver = false, sNoPathTimer = null, sAccepted = false, sKeys = null, sOfferSdp = '';
 function showSending() {
-  if (!sAccepted) { setStatus($('sStatus'), 'Código confirmado. Falta carregar em “Aceitar” no ecrã de destino…', 'warn'); return; }
   const hasAudio = sStream && sStream.getAudioTracks().length > 0;
   const vt = sStream && sStream.getVideoTracks()[0], st = vt ? vt.getSettings() : {};
   setStatus($('sStatus'), '✔ A transmitir para o ecrã' + (hasAudio ? ' (com som)' : ' (sem som — marca a opção de áudio)') +
     ' · ' + Q_LABEL[sCur.q] + ' ' + sCur.fps + ' fps' + (sRestart ? ' · formato mudado pelo ecrã para ' + sRestart : ''), hasAudio ? 'ok' : 'warn');
 }
-async function confirmSend(ok) {
-  $('verify').classList.add('hidden');
+// a resposta do ecrã foi verificada (assinatura certa): a ligação está confirmada
+async function confirmed() {
   if (!sPc) return;
-  if (!ok) {
-    stopSending('Cancelado: os códigos não eram iguais. Alguém pode ter tentado ligar-se. No ecrã de destino, carrega em “Gerar outro código” e tenta outra vez.', 'err');
-    return;
-  }
-  // só agora a imagem e o som começam a ser enviados
-  for (const [snd, tr] of sHeld) { try { await snd.replaceTrack(tr); } catch (e) { console.warn('replaceTrack', e); } }
   sConfirmed = true;
   await setBitrate(sPc, brFor(sCur), sCur.fps);
   if (sConnected) showSending(); else setStatus($('sStatus'), 'A ligar ao ecrã…', 'warn');
@@ -988,8 +983,9 @@ async function renegotiateSender() {
   if (!pc || !sConfirmed || pc.signalingState !== 'stable' || !pc.currentRemoteDescription) return;
   try {
     const offer = await pc.createOffer();
+    const auth = await authSign(sKeys.key, offerMsg(sCid, offer.sdp));
     if (pc !== sPc) return;
-    sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true });
+    sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true, auth });
     await pc.setLocalDescription(offer);
   } catch (e) { console.warn('renegociar', e); }
 }
@@ -1062,9 +1058,25 @@ async function startSending() {
   if (vt) { vt.contentHint = sMode; vt.onended = () => stopSending('Parado'); }
   $('preview').srcObject = sStream; $('preview').style.display = 'block'; $('preview').play().catch(() => {});
   $('goBtn').style.display = 'none'; $('stopBtn').style.display = 'block';
+
+  /* Ligação na mesma rede, automática: o Chrome esconde o endereço deste PC na rede local (mDNS)
+     e muitos routers não deixam o outro aparelho descobri-lo (sobretudo entre cabo e Wi-Fi). Com
+     permissão de microfone, o Chrome mostra o endereço real. Pede-se UMA vez; o microfone é desligado
+     logo a seguir e nunca entra na transmissão. */
+  if (await lanPermission() !== 'granted' && !store('vx-lan-no') && !params.has('nolan')) {
+    setStatus($('sStatus'), 'O Chrome vai pedir o microfone: carrega em Permitir. É só para os aparelhos se encontrarem na mesma rede (cabo/Wi-Fi). O microfone nunca é usado.', 'warn');
+    const ok = await Promise.race([enableLan(), new Promise(r => setTimeout(() => r(null), 25000))]);
+    if (ok === false) store('vx-lan-no', '1');   // recusou ou não há microfone: não voltar a perguntar sozinho
+    renderLan();
+    if (!sStream) return;   // parou entretanto
+  }
   setStatus($('sStatus'), 'A ligar ao servidor…', 'warn');
 
-  sDst = PREFIX + code;
+  setStatus($('sStatus'), 'A preparar a ligação segura…', 'warn');
+  sKeys = await codeKeys(code);
+  if (!sStream) return;
+  setStatus($('sStatus'), 'A ligar ao servidor…', 'warn');
+  sDst = sKeys.id;   // o servidor só vê este endereço, nunca o código
   sCid = 'mc_' + rnd(12);
   sConnected = false; sRestart = null; sAuto = false; sConfirmed = false;
   sSig = new Signal(PREFIX + 'pc-' + rnd(10), {
@@ -1079,10 +1091,7 @@ async function makeOffer() {
   setStatus($('sStatus'), sRestart ? 'O ecrã pediu outro formato de vídeo (' + sRestart + '). A religar…' : 'A ligar ao ecrã…', 'warn');
   const pc = sPc = new RTCPeerConnection(rtcConfig());
   sStream.getTracks().forEach(t => pc.addTrack(t, sStream));
-  // nada é enviado até confirmares o código de verificação
   sConfirmed = false;
-  sHeld = pc.getSenders().filter(x => x.track).map(x => [x, x.track]);
-  await Promise.all(sHeld.map(([x]) => x.replaceTrack(null)));
   // (o formato de vídeo é escolhido pelo ecrã de destino na resposta)
   // Canal de controlo: o ecrã de destino pode pedir outra qualidade
   sCtrl = pc.createDataChannel('ctrl');
@@ -1119,8 +1128,11 @@ async function makeOffer() {
     }
   };
   const offer = await pc.createOffer();
-  // A oferta vai primeiro, para chegar ao ecrã de destino antes dos candidatos ICE
-  sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null });
+  sOfferSdp = offer.sdp;
+  // A oferta vai primeiro, para chegar ao ecrã de destino antes dos candidatos ICE; assinada com a chave do código
+  const auth = await authSign(sKeys.key, offerMsg(sCid, offer.sdp));
+  if (pc !== sPc) return;
+  sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, auth });
   await pc.setLocalDescription(offer);
   setBitrate(pc, brFor(sCur), sCur.fps);
 }
@@ -1129,11 +1141,17 @@ async function senderMsg(m) {
   const p = m.payload || {};
   if (!sPc) return;
   if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp && sPc.currentRemoteDescription) {
-    // resposta a um "religar" (ICE restart): só é aceite se vier do MESMO aparelho já confirmado
-    if (sdpFingerprint(p.sdp.sdp).toUpperCase() !== sAnswerFp || sPc.signalingState !== 'have-local-offer') return;
+    // resposta a um "religar" (ICE restart): só é aceite se vier do MESMO ecrã e assinada
+    if (fpOf(p.sdp.sdp) !== sAnswerFp || sPc.signalingState !== 'have-local-offer') return;
+    if (!(await authCheck(sKeys.key, answerMsg(sCid, sPc.localDescription.sdp, p.sdp.sdp), p.auth))) return;
     try { await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brFor(sCur), !sAdapt), OPUS_HQ) }); }
     catch (e) { console.warn('religar', e); }
   } else if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp) {
+    // só aceita a resposta assinada com a chave do código (prova que é o ecrã certo)
+    if (!(await authCheck(sKeys.key, answerMsg(sCid, sOfferSdp, p.sdp.sdp), p.auth))) {
+      setStatus($('sStatus'), 'Chegou uma resposta que não é do teu ecrã: ignorada. A aguardar o ecrã certo…', 'warn');
+      return;
+    }
     try {
       sAnswerFp = sdpFingerprint(p.sdp.sdp).toUpperCase();
       kindsFromSdp(p.sdp.sdp, sRK);
@@ -1141,18 +1159,9 @@ async function senderMsg(m) {
       await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brFor(sCur), !sAdapt), OPUS_HQ) });
       for (const c of sPending) await sPc.addIceCandidate(c).catch(() => {});
       sPending = [];
-      sSas = await sasFrom(sPc.localDescription.sdp, p.sdp.sdp);
-      if (sAuto) { sAuto = false; await confirmSend(true); }
-      else {
-        $('sasPc').textContent = sSas; $('verify').classList.remove('hidden');
-        setStatus($('sStatus'), sAccepted ? 'O ecrã aceitou. Confirma o código de verificação abaixo.' : 'Confirma o código de verificação abaixo (e carrega em Aceitar no ecrã de destino).', 'warn');
-      }
+      sAuto = false; sAccepted = true;
+      await confirmed();
     } catch (e) { stopSending('O ecrã recusou a ligação (' + e.message + ').', 'err'); }
-  } else if (m.type === 'CANDIDATE' && p.connectionId === sCid && p.accepted) {
-    sAccepted = true;
-    if (!sConfirmed && !$('verify').classList.contains('hidden')) setStatus($('sStatus'), 'O ecrã aceitou. Confirma o código de verificação abaixo.', 'warn');
-    else if (sConfirmed && !sConnected) setStatus($('sStatus'), 'O ecrã aceitou. A ligar…', 'warn');
-    else if (sConfirmed && sConnected) showSending();
   } else if (m.type === 'CANDIDATE' && p.connectionId === sCid && p.candidate && p.candidate.candidate) {
     sRK.add(candKind(p.candidate.candidate));
     if (sPc.remoteDescription) sPc.addIceCandidate(p.candidate).catch(() => {});
@@ -1160,7 +1169,8 @@ async function senderMsg(m) {
   } else if (m.type === 'EXPIRE' && m.src === sDst && !sConnected) {
     stopSending('Código não encontrado. Confirma o código no ecrã de destino (tem de estar em “Pronto ✔”).', 'err');
   } else if (m.type === 'LEAVE' && m.src === sDst) {
-    if (p.declined) stopSending('O ecrã recusou a ligação (ou ninguém carregou em Aceitar a tempo).', 'warn');
+    if (p.busy) stopSending('O ecrã de destino já está a receber de outro aparelho. Fecha essa transmissão primeiro.', 'warn');
+    else if (p.declined) stopSending('O ecrã recusou a ligação.', 'warn');
     else if (p.restart && sStream) restartPeer(p.codec);
     else stopSending('O ecrã fechou a ligação.', 'warn');
   }
@@ -1192,12 +1202,11 @@ async function lanRetry(p) {
   if (sStream && sSig) retryConnection();
   else setStatus($('sStatus'), '✔ Ligação na mesma rede ativada. Agora carrega em Começar.', 'ok');
 }
-// Nova tentativa, com ligação nova (volta a pedir Aceitar e o código de verificação)
+// Nova tentativa, com ligação nova
 function retryConnection() {
   if (sPc) { sSig.send('LEAVE', sDst, { type: 'media', connectionId: sCid }); try { sPc.close(); } catch (e) {} }
   sPc = null; sCtrl = null; sPending = []; sConnected = false; clearTimeout(sIceTimer); sIceTimer = null; sIceTries = 0;
   sCid = 'mc_' + rnd(12); sRestart = null; sAuto = false;
-  $('verify').classList.add('hidden');
   setTimeout(makeOffer, 800);   // dá tempo ao ecrã de destino de voltar ao código
 }
 async function renderLan() {
@@ -1223,8 +1232,9 @@ async function iceRestart(force) {   // force: só para testes
   setStatus($('sStatus'), 'A ligação caiu. A religar… (tentativa ' + sIceTries + ')', 'warn');
   try {
     const offer = await pc.createOffer({ iceRestart: true });
+    const auth = await authSign(sKeys.key, offerMsg(sCid, offer.sdp));
     if (pc !== sPc) return;
-    sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true });
+    sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true, auth });
     await pc.setLocalDescription(offer);
   } catch (e) { console.warn('ice restart', e); }
   if (!force) scheduleIceRestart(8000);   // se não voltar, tenta outra vez
@@ -1287,9 +1297,8 @@ async function setBitrate(pc, br, fps) {
 function stopSending(msg, kind) {
   if (sSig && sDst && sPc) sSig.send('LEAVE', sDst, { type: 'media', connectionId: sCid });
   if (sPc) { try { sPc.close(); } catch (e) {} sPc = null; }
-  sCtrl = null; sHeld = []; sConfirmed = false; clearTimeout(sIceTimer); sIceTimer = null; sIceTries = 0;
+  sCtrl = null; sConfirmed = false; clearTimeout(sIceTimer); sIceTimer = null; sIceTries = 0;
   clearTimeout(sNoPathTimer); $('lanBox').classList.add('hidden');
-  $('verify').classList.add('hidden');
   if (sSig) { sSig.close(); sSig = null; }
   if (sStream) { sStream.getTracks().forEach(t => t.stop()); sStream = null; }
   sPending = []; sConnected = false;
