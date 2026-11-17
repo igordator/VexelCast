@@ -27,7 +27,11 @@
   .choice small { display: block; font-weight: 400; font-size: 16px; opacity: .9; margin-top: 8px; }
   .choice.tesla { background: linear-gradient(135deg, #e82127, #8b0f13); }
   .choice.pc { background: linear-gradient(135deg, #3b82f6, #1e3a8a); }
-  .emoji { font-size: 42px; display: block; margin-bottom: 8px; }
+  .emoji { display: block; margin-bottom: 8px; line-height: 1; }
+  .emoji .ic { width: 46px; height: 46px; }
+  /* Ícones desenhados (SVG): não dependem das fontes do browser do Tesla,
+     que não tem emojis nem símbolos como ⛶ (apareciam como um retângulo vazio). */
+  .ic { width: 1.15em; height: 1.15em; vertical-align: -0.2em; display: inline-block; flex: none; }
   .code { font-size: 120px; font-weight: 800; letter-spacing: 18px; color: white;
     background: var(--card); border: 3px solid var(--red); border-radius: 24px; padding: 10px 34px 10px 52px;
     font-variant-numeric: tabular-nums; }
@@ -69,6 +73,16 @@
   #qPanel button { font-size: 18px; padding: 10px 14px; border-radius: 10px; border: 2px solid #3b4566; background: #1f2740; color: #fff; cursor: pointer; }
   #qPanel button.sel { background: var(--blue); border-color: var(--blue); }
   #qPanel small { color: var(--muted); font-size: 14px; }
+  #diag { position: absolute; left: 14px; bottom: 14px; max-width: 520px; background: rgba(10,14,26,.92); border: 2px solid #3b4566;
+    border-radius: 14px; padding: 12px 16px; color: #e8ecf6; font-size: 15px; line-height: 1.55; display: none; }
+  #diag.on { display: block; }
+  #diag b { color: #fff; }
+  #diag .warn { color: #fcd34d; font-weight: 700; }
+  #diag .bad { color: #fca5a5; font-weight: 700; }
+  .vset { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 16px; }
+  .vset select { font-size: 16px; padding: 8px 10px; width: auto; }
+  .fsbox { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .fsbox small { color: var(--muted); font-size: 14px; max-width: 520px; text-align: center; }
   #preview { width: 100%; max-width: 520px; border-radius: 14px; background: black; display: none; }
 </style>
 </head>
@@ -80,11 +94,11 @@
   <p>Mostra o ecrã e o som do teu PC no ecrã do Tesla.</p>
   <div class="choices">
     <button class="choice tesla" onclick="startViewer()">
-      <span class="emoji">🚗</span>Estou no Tesla
+      <span class="emoji"><i data-ic="car"></i></span>Estou no Tesla
       <small>Mostrar o código e receber a imagem</small>
     </button>
     <button class="choice pc" onclick="show('sender')">
-      <span class="emoji">💻</span>Transmitir deste PC
+      <span class="emoji"><i data-ic="laptop"></i></span>Transmitir deste PC
       <small>Partilhar o ecrã/separador com o carro</small>
     </button>
   </div>
@@ -96,12 +110,25 @@
   <h2>Escreve este código no PC ou no telemóvel</h2>
   <div class="code" id="myCode">······</div>
   <div class="status" id="vStatus">A ligar ao servidor…</div>
+  <div class="fsbox" id="fsBox">
+    <button class="btn go" id="fsBtn" onclick="openFullscreenTrick()"><i data-ic="full"></i> Abrir em ecrã inteiro</button>
+    <small>Abre esta página sem a barra do browser (pelo YouTube). Se aparecer o YouTube, carrega em <b>“Ir para o site”</b>. Faz isto antes de ligares o PC.</small>
+  </div>
+  <div class="vset">
+    <label for="codecSel">Formato de vídeo:</label>
+    <select id="codecSel" onchange="onCodecSel()">
+      <option value="auto">Automático (recomendado)</option>
+      <option value="vp8">VP8</option>
+      <option value="h264">H.264</option>
+      <option value="vp9">VP9</option>
+    </select>
+  </div>
   <button class="btn ghost" onclick="newCode()">Gerar outro código</button>
 </section>
 
 <!-- PC: TRANSMITIR -->
 <section id="sender" class="screen">
-  <h2>💻 Transmitir para o Tesla</h2>
+  <h2><i data-ic="laptop"></i> Transmitir para o Tesla</h2>
   <div class="card">
     <label for="code">Código que aparece no Tesla</label>
     <input id="code" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="off">
@@ -124,9 +151,9 @@
         </select>
       </div>
     </div>
-    <div class="hint">Podes mudar a qualidade a meio da transmissão, aqui ou no ecrã do Tesla (⚙️).</div>
-    <button class="btn go" id="goBtn" onclick="startSending()">▶ Começar a transmitir</button>
-    <button class="btn stop" id="stopBtn" onclick="stopSending()" style="display:none">■ Parar</button>
+    <div class="hint">Podes mudar a qualidade a meio da transmissão, aqui ou no ecrã do Tesla (<i data-ic="gear"></i>).</div>
+    <button class="btn go" id="goBtn" onclick="startSending()"><i data-ic="play"></i> Começar a transmitir</button>
+    <button class="btn stop" id="stopBtn" onclick="stopSending()" style="display:none"><i data-ic="stop"></i> Parar</button>
     <div class="status" id="sStatus">À espera</div>
   </div>
   <video id="preview" muted playsinline></video>
@@ -136,21 +163,23 @@
     <b>Dica 2:</b> para mostrar o PC inteiro, escolhe <b>“Ecrã inteiro”</b> e liga <b>“Partilhar áudio do sistema”</b>.<br>
     <b>Netflix, Disney+, Prime…</b> aparecem a preto (proteção DRM). Esses abre-os diretamente no browser do Tesla.
   </div>
-  <button class="btn ghost" onclick="location.href=location.pathname">← Voltar</button>
+  <button class="btn ghost" onclick="location.href=location.pathname"><i data-ic="back"></i> Voltar</button>
 </section>
 
 <!-- TESLA: LEITOR -->
 <div id="player">
   <video id="video" autoplay playsinline muted></video>
-  <div class="overlay" id="unmute" onclick="unmute()">🔊 Toca aqui para ligar o som</div>
+  <div class="overlay" id="unmute" onclick="unmute()"><i data-ic="speaker"></i> Toca aqui para ligar o som</div>
   <div class="bar" id="bar">
     <span id="qInfo">…</span>
-    <button id="qBtn" onclick="toggleQPanel()" style="display:none">⚙️ Qualidade</button>
-    <button onclick="goFull()">⛶ Ecrã inteiro</button>
-    <button onclick="endView()">✕ Fechar</button>
+    <button id="qBtn" onclick="toggleQPanel()" style="display:none"><i data-ic="gear"></i> Qualidade</button>
+    <button onclick="toggleDiag()" title="Diagnóstico"><i data-ic="info"></i></button>
+    <button id="fullBtn" onclick="goFull()"><i data-ic="full"></i> Ecrã inteiro</button>
+    <button onclick="endView()"><i data-ic="x"></i> Fechar</button>
   </div>
+  <div id="diag"></div>
   <div id="qPanel">
-    <h3>⚙️ Qualidade</h3>
+    <h3><i data-ic="gear"></i> Qualidade</h3>
     <div class="opts" id="qOpts"></div>
     <h3>Fluidez</h3>
     <div class="opts" id="fOpts"></div>
@@ -169,15 +198,40 @@ const PREFIX = 'tcast-';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 const ICE = params.has('noice') ? [] : [
-  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
   { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }
 ];
 const $ = id => document.getElementById(id);
+const ICONS = {
+  full: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
+  gear: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  speaker: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>',
+  play: '<path d="M7 5l12 7-12 7z" fill="currentColor" stroke="none"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor" stroke="none"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
+  warn: '<path d="M12 3.5l9 16H3z"/><path d="M12 10v4M12 17v.01"/>',
+  back: '<path d="M15 5l-7 7 7 7"/>',
+  car: '<path d="M3 16v-2.5l2-5.5C5.5 6.8 6.5 6 7.8 6h8.4c1.3 0 2.3.8 2.8 2l2 5.5V16"/><path d="M3 16h18v2.5h-3V16M6 16v2.5H3V16"/><circle cx="7.5" cy="13" r="1.1"/><circle cx="16.5" cy="13" r="1.1"/>',
+  laptop: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>'
+};
+function ic(n) {
+  return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[n] || '') + '</svg>';
+}
+// Texto -> HTML seguro, com os símbolos trocados por ícones desenhados
+const SYM = [['⚠️', 'warn'], ['✔', 'check'], ['✖', 'x'], ['✕', 'x'], ['⛶', 'full'], ['▶', 'play'], ['🔊', 'speaker']];
+function richText(t) {
+  let h = String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  for (const [k, n] of SYM) h = h.split(k).join(ic(n));
+  return h;
+}
+document.querySelectorAll('[data-ic]').forEach(e => { e.outerHTML = ic(e.dataset.ic); });
 function show(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
   if (id) $(id).classList.add('on');
 }
-function setStatus(el, text, kind) { el.textContent = text; el.className = 'status ' + (kind || ''); }
+function setStatus(el, text, kind) { el.innerHTML = richText(text); el.className = 'status ' + (kind || ''); }
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 function randCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
 function rnd(n) {
@@ -214,6 +268,59 @@ class Signal {
 /* ---------------- TESLA (VER) ---------------- */
 let vSig = null, vPc = null, vRemote = null, vPending = [], vStream = null, vCtrl = null, vQ = null, vInfoTimer = null;
 const Q_LABEL = { 360: '360p', 540: '540p', 720: '720p', 1080: '1080p', max: 'Máxima' };
+
+/* --- Formato de vídeo (codec): quem escolhe é o Tesla, porque é ele que tem de o descodificar.
+   Algumas versões do software do Tesla não mostram H.264 por WebRTC (ecrã preto), por isso o
+   "Automático" começa em VP8 e, se não aparecer imagem, troca sozinho para o seguinte. --- */
+const CODECS = ['vp8', 'h264', 'vp9'];
+const CODEC_LABEL = { auto: 'Automático', vp8: 'VP8', h264: 'H.264', vp9: 'VP9' };
+let vCodec = null, vFailed = [], vWatch = null, vDiagForced = false, vDiagMsg = '';
+function codecChoice() { const c = store('tcast-codec'); return CODECS.includes(c) ? c : 'auto'; }
+function codecToUse() {
+  const c = codecChoice();
+  if (c !== 'auto') return c;
+  const ok = store('tcast-codec-ok');
+  if (CODECS.includes(ok) && !vFailed.includes(ok)) return ok;
+  return CODECS.find(x => !vFailed.includes(x)) || 'vp8';
+}
+function onCodecSel() { store('tcast-codec', $('codecSel').value); vFailed = []; }
+const CODEC_RE = { vp8: /VP8/i, h264: /H264/i, vp9: /VP9/i };
+function applyCodecPref(pc, want) {
+  try {
+    const caps = RTCRtpReceiver.getCapabilities && RTCRtpReceiver.getCapabilities('video');
+    if (!caps) return;
+    const re = CODEC_RE[want];
+    const first = caps.codecs.filter(c => re.test(c.mimeType));
+    if (!first.length) return;
+    const order = first.concat(caps.codecs.filter(c => !re.test(c.mimeType)));
+    pc.getTransceivers().forEach(t => {
+      if (t.receiver && t.receiver.track && t.receiver.track.kind === 'video' && t.setCodecPreferences) t.setCodecPreferences(order);
+    });
+  } catch (e) { console.warn('codec pref', e); }
+}
+// Reforço para browsers sem setCodecPreferences: reordenar os codecs na resposta SDP
+function preferInSdp(sdp, want) {
+  const lines = sdp.split('\r\n');
+  const m = lines.findIndex(l => l.startsWith('m=video '));
+  if (m < 0) return sdp;
+  const name = { vp8: 'VP8', h264: 'H264', vp9: 'VP9' }[want];
+  const pts = lines.map(l => (l.match(new RegExp('^a=rtpmap:(\\d+) ' + name + '/90000')) || [])[1]).filter(Boolean);
+  if (!pts.length) return sdp;
+  const parts = lines[m].split(' ');
+  const list = parts.slice(3);
+  lines[m] = parts.slice(0, 3).concat(pts.filter(x => list.includes(x)), list.filter(x => !pts.includes(x))).join(' ');
+  return lines.join('\r\n');
+}
+function toggleDiag() { vDiagForced = !$('diag').classList.contains('on'); $('diag').classList.toggle('on', vDiagForced); flashBar(); }
+function openFullscreenTrick() {
+  const keep = ['server', 'noice'].filter(k => params.has(k)).map(k => '&' + k + (params.get(k) ? '=' + encodeURIComponent(params.get(k)) : '')).join('');
+  const target = location.origin + location.pathname + '?tesla&fs=1' + keep;
+  location.href = 'https://www.youtube.com/redirect?q=' + encodeURIComponent(target);
+}
+function vToast(msg) {
+  vDiagMsg = msg; $('diag').classList.add('on'); renderDiag(window.__lastDiag || {});
+  setTimeout(() => { if (vDiagMsg === msg) { vDiagMsg = ''; if (!vDiagForced) $('diag').classList.remove('on'); } }, 7000);
+}
 
 function startViewer(forceNew) {
   show('viewer');
@@ -261,18 +368,22 @@ async function viewerMsg(m) {
     pc.oniceconnectionstatechange = () => {
       if (pc !== vPc) return;
       const s = pc.iceConnectionState;
-      if (s === 'connected' || s === 'completed') setStatus($('vStatus'), 'Ligado ✔', 'ok');
+      if (s === 'connected' || s === 'completed') { setStatus($('vStatus'), 'Ligado ✔', 'ok'); if (vWatch && !vWatch.connectedAt) vWatch.connectedAt = Date.now(); }
       else if (s === 'failed') backToCode('A ligação falhou.');
       else if (s === 'disconnected') setTimeout(() => { if (pc === vPc && pc.iceConnectionState === 'disconnected') backToCode('A ligação caiu.'); }, 6000);
     };
     setStatus($('vStatus'), 'A receber ligação…', 'warn');
+    vCodec = codecToUse();
+    vWatch = { start: Date.now(), connectedAt: 0, framesAt: 0 };
     try {
       await pc.setRemoteDescription({ type: 'offer', sdp: p.sdp.sdp });
       for (const c of vPending) await pc.addIceCandidate(c).catch(() => {});
       vPending = [];
+      applyCodecPref(pc, vCodec);
       const ans = await pc.createAnswer();
-      await pc.setLocalDescription(ans);
-      vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp: ans.sdp }, type: 'media', connectionId: remote.cid });
+      const sdp = preferInSdp(ans.sdp, vCodec);
+      await pc.setLocalDescription({ type: 'answer', sdp });
+      vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp }, type: 'media', connectionId: remote.cid });
     } catch (e) {
       backToCode('Erro na ligação (' + e.message + ').');
     }
@@ -286,6 +397,7 @@ async function viewerMsg(m) {
 
 function closeViewerPc() {
   if (vPc) { try { vPc.close(); } catch (e) {} }
+  vWatch = null;
   vPc = null; vRemote = null; vPending = []; vCtrl = null; vQ = null;
   $('qBtn').style.display = 'none'; $('qPanel').classList.remove('on');
   clearInterval(vInfoTimer); vInfoTimer = null;
@@ -315,16 +427,71 @@ function toggleQPanel() {
 }
 async function updateInfo() {
   if (!vPc) return;
+  const pc = vPc;
+  let d = { ice: pc.iceConnectionState, codec: CODEC_LABEL[vCodec] || '?', route: '', bytes: 0, frames: 0, recv: 0, w: 0, h: 0, fps: 0 };
   try {
-    const r = await vPc.getStats(); let t = '';
-    r.forEach(s => { if (s.type === 'inbound-rtp' && s.kind === 'video' && s.frameWidth)
-      t = s.frameWidth + '×' + s.frameHeight + ' · ' + Math.round(s.framesPerSecond || 0) + ' fps'; });
-    $('qInfo').textContent = t || '…';
+    const r = await pc.getStats();
+    const byId = {}; r.forEach(s => byId[s.id] = s);
+    r.forEach(s => {
+      if (s.type === 'inbound-rtp' && s.kind === 'video') {
+        d.bytes = s.bytesReceived || 0; d.frames = s.framesDecoded || 0; d.recv = s.framesReceived || 0;
+        d.w = s.frameWidth || 0; d.h = s.frameHeight || 0; d.fps = Math.round(s.framesPerSecond || 0);
+        if (s.codecId && byId[s.codecId]) d.codec = byId[s.codecId].mimeType.replace('video/', '');
+      }
+      if (s.type === 'candidate-pair' && (s.nominated || s.selected) && s.state === 'succeeded') {
+        const lc = byId[s.localCandidateId], rc = byId[s.remoteCandidateId];
+        const t = [lc && lc.candidateType, rc && rc.candidateType];
+        d.route = t.includes('relay') ? 'por servidor (TURN)' : (t.includes('srflx') || t.includes('prflx')) ? 'pela internet' : t[0] ? 'rede local' : '';
+      }
+    });
   } catch (e) {}
+  if (pc !== vPc) return;
+  window.__lastDiag = d;
+  $('qInfo').textContent = d.w ? d.w + '×' + d.h + ' · ' + d.fps + ' fps' : '…';
+  const v = $('video'), now = Date.now(), w = vWatch || {};
+  // 1) Ligação não passa
+  if (!w.connectedAt && now - w.start > 15000 && !w.warnedNet) {
+    w.warnedNet = true;
+    vToast('A ligação não está a passar. Põe o Tesla no hotspot do telemóvel (ou noutro Wi-Fi) e tenta outra vez.');
+  }
+  // 2) Chegam dados mas nenhuma imagem é descodificada -> este formato não funciona neste Tesla
+  if (w.connectedAt && d.frames === 0 && now - w.connectedAt > 5000 && d.bytes > 30000 && !w.decodeFail) {
+    w.decodeFail = true; decodeFailed();
+  }
+  // 3) Imagem descodificada: guardar o formato que funciona
+  if (d.frames > 0 && !w.framesAt) { w.framesAt = now; if (codecChoice() === 'auto') store('tcast-codec-ok', vCodec); }
+  // 4) Imagem a chegar mas o vídeo está parado (autoplay bloqueado)
+  if (d.frames > 0 && v.paused) { $('unmute').innerHTML = richText('▶ Toca aqui para ver'); $('unmute').style.display = 'block'; }
+  renderDiag(d);
+}
+function decodeFailed() {
+  const bad = vCodec;
+  if (codecChoice() !== 'auto') {
+    vToast('A imagem não aparece com ' + CODEC_LABEL[bad] + '. Fecha e, no ecrã do código, escolhe “Automático” ou outro formato.');
+    return;
+  }
+  if (!vFailed.includes(bad)) vFailed.push(bad);
+  if (store('tcast-codec-ok') === bad) store('tcast-codec-ok', '');
+  const next = CODECS.find(x => !vFailed.includes(x));
+  if (!next) { vToast('Nenhum formato de vídeo funcionou neste Tesla. Diz-me o que aparece neste painel.'); vFailed = []; return; }
+  vToast('A imagem não aparece com ' + CODEC_LABEL[bad] + '. A tentar com ' + CODEC_LABEL[next] + '…');
+  // pedir ao PC/telemóvel para religar (o Tesla vai responder com o novo formato)
+  if (vSig && vRemote) vSig.send('LEAVE', vRemote.src, { type: 'media', connectionId: vRemote.cid, restart: true, codec: next });
+}
+function renderDiag(d) {
+  const iceTxt = { new: 'a começar', checking: 'a ligar…', connected: 'ligado ✔', completed: 'ligado ✔', disconnected: 'instável', failed: 'falhou ✖', closed: 'fechado' }[d.ice] || d.ice || '-';
+  const iceCls = (d.ice === 'connected' || d.ice === 'completed') ? '' : (d.ice === 'failed' ? 'bad' : 'warn');
+  const imgCls = d.frames > 0 ? '' : 'bad';
+  $('diag').innerHTML = (vDiagMsg ? '<div class="warn">' + richText('⚠️ ' + vDiagMsg) + '</div>' : '') +
+    '<b>Ligação:</b> <span class="' + iceCls + '">' + richText(iceTxt) + '</span>' + (d.route ? ' · ' + d.route : '') + '<br>' +
+    '<b>Formato:</b> ' + (d.codec || '-') + (codecChoice() === 'auto' ? ' (automático)' : '') + '<br>' +
+    '<b>Imagem:</b> <span class="' + imgCls + '">' + (d.frames > 0 ? d.w + '×' + d.h + ' · ' + d.fps + ' fps' : 'nenhuma ainda') + '</span><br>' +
+    '<b>Recebido:</b> ' + ((d.bytes || 0) / 1e6).toFixed(1) + ' MB · ' + (d.frames || 0) + ' imagens mostradas de ' + (d.recv || 0) + ' recebidas';
 }
 function playStream(stream) {
   const v = $('video');
   if (v.srcObject !== stream) { v.srcObject = stream; v.muted = true; }
+  $('unmute').innerHTML = richText('🔊 Toca aqui para ligar o som');
   $('player').classList.add('on');
   if (!vInfoTimer) vInfoTimer = setInterval(updateInfo, 1000);
   $('unmute').style.display = (stream.getAudioTracks().length && v.muted) ? 'block' : 'none';
@@ -338,11 +505,20 @@ function unmute() {
   $('unmute').style.display = 'none';
 }
 function goFull() {
-  const el = $('player');
-  (el.requestFullscreen || el.webkitRequestFullscreen || function () {}).call(el);
+  const el = $('player'), v = $('video');
+  const tries = [() => el.requestFullscreen && el.requestFullscreen(), () => el.webkitRequestFullscreen && el.webkitRequestFullscreen(),
+                 () => v.requestFullscreen && v.requestFullscreen(), () => v.webkitEnterFullscreen && v.webkitEnterFullscreen()];
+  (async () => {
+    for (const t of tries) { try { const r = t(); if (r && r.then) await r; if (document.fullscreenElement || document.webkitFullscreenElement) return; } catch (e) {} }
+    setTimeout(() => {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement)
+        vToast('O browser do Tesla não deixa pôr esta página em ecrã inteiro assim. Fecha (✕ Fechar) e, no ecrã do código, carrega em “⛶ Abrir em ecrã inteiro”.');
+    }, 400);
+  })();
 }
 function backToCode(msg) {
   closeViewerPc();
+  vDiagMsg = ''; vDiagForced = false; $('diag').classList.remove('on');
   $('player').classList.remove('on');
   $('video').srcObject = null;
   vStream = null;
@@ -361,7 +537,7 @@ function flashBar() {
 $('player').addEventListener('click', e => { if (e.target.id === 'video') { $('qPanel').classList.remove('on'); flashBar(); } });
 
 /* ---------------- PC (TRANSMITIR) ---------------- */
-let sSig = null, sPc = null, sStream = null, sDst = null, sCid = null, sPending = [], sConnected = false, sCtrl = null;
+let sSig = null, sPc = null, sStream = null, sDst = null, sCid = null, sPending = [], sConnected = false, sCtrl = null, sRestart = null;
 // h = altura máxima; br = bitrate máximo a 30 fps (a 60 fps usa-se 1,5×)
 const QUALITY = {
   360:  { h: 360,  br: 800000 },
@@ -440,7 +616,7 @@ async function startSending() {
 
   sDst = PREFIX + code;
   sCid = 'mc_' + rnd(12);
-  sConnected = false;
+  sConnected = false; sRestart = null;
   sSig = new Signal(PREFIX + 'pc-' + rnd(10), {
     open: () => { if (!sPc) makeOffer(); },
     lost: () => { if (!sConnected) setStatus($('sStatus'), 'Sem ligação ao servidor, a tentar outra vez… (tens internet?)', 'warn'); },
@@ -450,10 +626,10 @@ async function startSending() {
 }
 
 async function makeOffer() {
-  setStatus($('sStatus'), 'A ligar ao Tesla…', 'warn');
+  setStatus($('sStatus'), sRestart ? 'O Tesla pediu outro formato de vídeo (' + sRestart + '). A religar…' : 'A ligar ao Tesla…', 'warn');
   const pc = sPc = new RTCPeerConnection({ iceServers: ICE });
   sStream.getTracks().forEach(t => pc.addTrack(t, sStream));
-  preferH264(pc);
+  // (o formato de vídeo é escolhido pelo Tesla na resposta)
   // Canal de controlo: o Tesla pode pedir outra qualidade
   sCtrl = pc.createDataChannel('ctrl');
   sCtrl.onopen = () => sendState();
@@ -472,7 +648,7 @@ async function makeOffer() {
     if (s === 'connected' || s === 'completed') {
       sConnected = true;
       setStatus($('sStatus'), '✔ A transmitir para o Tesla' + (hasAudio ? ' (com som)' : ' (sem som — marca a opção de áudio)') +
-        ' · ' + Q_LABEL[sCur.q] + ' ' + sCur.fps + ' fps', hasAudio ? 'ok' : 'warn');
+        ' · ' + Q_LABEL[sCur.q] + ' ' + sCur.fps + ' fps' + (sRestart ? ' · formato mudado pelo Tesla para ' + sRestart : ''), hasAudio ? 'ok' : 'warn');
       setBitrate(pc, brFor(sCur), sCur.fps);
     } else if (s === 'failed') setStatus($('sStatus'), 'A ligação falhou (rede bloqueada?). Experimenta outra rede.', 'err');
     else if (s === 'disconnected') setStatus($('sStatus'), 'Ligação instável…', 'warn');
@@ -499,11 +675,20 @@ async function senderMsg(m) {
   } else if (m.type === 'EXPIRE' && m.src === sDst && !sConnected) {
     stopSending('Código não encontrado. Confirma o código no ecrã do Tesla (tem de estar em “Pronto ✔”).', 'err');
   } else if (m.type === 'LEAVE' && m.src === sDst) {
-    stopSending('O Tesla fechou a ligação.', 'warn');
+    if (p.restart && sStream) restartPeer(p.codec);
+    else stopSending('O Tesla fechou a ligação.', 'warn');
   }
 }
 
-// Preferir H.264 (o Tesla descodifica-o por hardware)
+// O Tesla pediu para religar (normalmente para mudar o formato de vídeo)
+async function restartPeer(codec) {
+  if (sPc) { try { sPc.close(); } catch (e) {} }
+  sPc = null; sCtrl = null; sPending = []; sConnected = false;
+  sCid = 'mc_' + rnd(12);
+  sRestart = codec ? ({ vp8: 'VP8', h264: 'H.264', vp9: 'VP9' }[codec] || codec) : 'outro';
+  await makeOffer();
+}
+// (já não usado por defeito: o Tesla decide o formato)
 function preferH264(pc) {
   try {
     const caps = RTCRtpSender.getCapabilities && RTCRtpSender.getCapabilities('video');
@@ -549,6 +734,8 @@ const last = store('tcast-last'); if (last) $('code').value = last;
   if (sq && QUALITY[sq]) $('quality').value = sq;
   if (sf === '30' || sf === '60') $('fps').value = sf;
   if (params.get('q') && QUALITY[params.get('q')]) $('quality').value = params.get('q'); }
+$('codecSel').value = codecChoice();
+if (params.has('fs')) { $('fsBox').classList.add('hidden'); $('fullBtn').classList.add('hidden'); }
 if (params.has('tesla')) startViewer();
 else if (params.has('pc')) show('sender');
 if (params.get('code')) $('code').value = params.get('code');
