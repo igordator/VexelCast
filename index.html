@@ -151,6 +151,7 @@
       <option value="vp9">VP9</option>
     </select>
   </div>
+  <div class="ios hidden" id="vLanNote">O Chrome vai pedir o <b>microfone</b>: carrega em <b>Permitir</b>. É só para os dois aparelhos se encontrarem na mesma rede (cabo/Wi-Fi). O microfone nunca é usado.</div>
   <div class="vset">
     <label for="latSel">Atraso:</label>
     <select id="latSel" onchange="setLatency(this.value)">
@@ -261,7 +262,7 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
-const APP_VERSION = '4.0';
+const APP_VERSION = '4.1';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
@@ -459,13 +460,39 @@ function candKind(c) {
   const t = p[7]; if (!t) return '';
   return t === 'host' && /\.local$/i.test(p[4]) ? 'mdns' : t;
 }
-function kindsFromSdp(sdp, set) { (String(sdp || '').match(/^a=candidate:.*$/gm) || []).forEach(l => { const k = candKind(l); if (k) set.add(k); }); }
+// guarda o tipo de endereço e, se for um endereço local visível (IPv4 privado), o próprio endereço
+function addCand(S, c) {
+  const k = candKind(c); if (!k) return;
+  S.add(k);
+  const ip = String(c).replace(/^a=/, '').split(' ')[4] || '';
+  if (k === 'host' && /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d+\.\d+(\.\d+)?$/.test(ip)) (S.ips || (S.ips = new Set())).add(ip);
+}
+function kindsFromSdp(sdp, set) { (String(sdp || '').match(/^a=candidate:.*$/gm) || []).forEach(l => addCand(set, l)); }
+const net24 = ip => ip.split('.').slice(0, 3).join('.');
+function ipsText(S) { return S && S.ips && S.ips.size ? ' (' + [...S.ips].map(ip => net24(ip) + '.x').join(', ') + ')' : ''; }
+// true se os dois lados mostram endereços locais e nenhum está na mesma rede (/24)
+function diffSubnets(L, R) {
+  if (!L.ips || !R.ips || !L.ips.size || !R.ips.size) return false;
+  const a = new Set([...L.ips].map(net24));
+  return ![...R.ips].some(ip => a.has(net24(ip)));
+}
 const KIND_LABEL = { mdns: 'local escondido (mDNS)', host: 'local', srflx: 'internet', prflx: 'internet', relay: 'retransmissão' };
-function kindsText(set) { return [...new Set([...set].map(k => KIND_LABEL[k] || k))].join(', ') || 'nenhum'; }
-function netReason(L, R) {
+function kindsText(set) { return ([...new Set([...set].map(k => KIND_LABEL[k] || k))].join(', ') || 'nenhum') + ipsText(set); }
+function netReason(L, R, ever) {
   const onlyMdns = S => S.has('mdns') && !S.has('host');
   const relay = L.has('relay') || R.has('relay');
   if (!R.size) return 'O outro aparelho não enviou nenhum endereço de rede (a internet dele está a funcionar?).';
+  if (diffSubnets(L, R))
+    return 'Os dois aparelhos estão em redes locais DIFERENTES (este: ' + [...L.ips].map(i => net24(i) + '.x').join(', ') +
+      ' · o outro: ' + [...R.ips].map(i => net24(i) + '.x').join(', ') + '). Estão ligados a routers diferentes ' +
+      '(ex.: o cabo num router e o Wi-Fi noutro, num repetidor ou num sistema mesh em modo router), por isso só se ' +
+      'encontram pela internet e essa ligação não aguenta' + (relay ? '' : ' (e as retransmissões grátis não responderam)') +
+      '. Solução: liga os dois ao MESMO router (o mesmo Wi-Fi, ou o cabo no mesmo router), ou põe o segundo router em modo “ponte/AP”. ' +
+      'Para testar: liga os dois ao hotspot do telemóvel.';
+  if (ever)
+    return 'Os dois aparelhos chegaram a ligar-se, mas a ligação foi cortada' + (relay ? '' : ' e as retransmissões grátis não responderam') + '. ' +
+      (onlyMdns(L) ? 'Este aparelho ainda esconde o endereço local: carrega em “Ligação na mesma rede” também aqui (em “Ligar entre redes diferentes”). ' : '') +
+      'Confirma que os dois estão ligados ao MESMO router (não a um repetidor/mesh/segundo router) e que no Windows a rede está como “Privada”. Para testar: liga os dois ao hotspot do telemóvel.';
   if (onlyMdns(L) && onlyMdns(R))
     return 'Os dois browsers esconderam o endereço na rede local (mDNS) e o router não deixou descobri-lo' +
       (relay ? '' : ', e os servidores de retransmissão gratuitos não responderam') +
@@ -580,6 +607,7 @@ async function startViewer(forceNew) {
   if (tok !== vStartTok) return;   // entretanto pediu-se outro código
   vKeys = keys;
   setStatus($('vStatus'), 'A ligar ao servidor…');
+  viewerLan();
   vSig = new Signal(keys.id, {
     open: () => { if (!vPc) setStatus($('vStatus'), (vNote ? vNote + ' ' : '') + 'Pronto ✔ À espera do PC/telemóvel…', 'ok'); vNote = ''; },
     lost: () => { if (!vPc) setStatus($('vStatus'), 'Sem ligação ao servidor, a tentar outra vez… (o carro tem internet?)', 'warn'); },
@@ -635,7 +663,7 @@ async function viewerMsg(m) {
     };
     pc.onicecandidate = e => {
       if (!(e.candidate && e.candidate.candidate)) return;
-      remote.lk.add(candKind(e.candidate.candidate));
+      addCand(remote.lk, e.candidate.candidate);
       // enviados logo (se ficassem retidos, a ligação ficava meio-aberta e os routers cortavam-na).
       // Só chegamos aqui depois de a oferta ter a assinatura certa (quem a enviou sabe o código).
       vSig.send('CANDIDATE', remote.src, { candidate: candJson(e.candidate), type: 'media', connectionId: remote.cid });
@@ -651,7 +679,7 @@ async function viewerMsg(m) {
         if (remote.lostAt) { remote.lostAt = 0; clearTimeout(remote.lostTimer); $('waitOv').style.display = 'none'; }
       } else if (s === 'failed' && !remote.ever) {
         // nunca chegou a ligar: não é "a ligação caiu", é "não há caminho" — explicar porquê
-        backToCode('Os aparelhos não se conseguiram ligar. ' + netReason(remote.lk, remote.rk));
+        backToCode('Os aparelhos não se conseguiram ligar. ' + netReason(remote.lk, remote.rk, remote.ever));
       } else if (s === 'failed' || s === 'disconnected') {
         if (!remote.ever) return;
         // não desistir logo: o PC/telemóvel vai tentar religar (ICE restart) durante ~1 minuto
@@ -693,7 +721,7 @@ async function viewerMsg(m) {
       backToCode('Erro na ligação (' + e.message + ').');
     }
   } else if (m.type === 'CANDIDATE' && vRemote && p.connectionId === vRemote.cid && p.candidate && p.candidate.candidate) {
-    vRemote.rk.add(candKind(p.candidate.candidate));
+    addCand(vRemote.rk, p.candidate.candidate);
     if (vPc && vPc.remoteDescription) vPc.addIceCandidate(p.candidate).catch(() => {});
     else vPending.push(p.candidate);
   } else if (m.type === 'LEAVE' && vRemote && m.src === vRemote.src) {
@@ -710,8 +738,23 @@ function updateWaitText() {
   const linked = ice === 'connected' || ice === 'completed';
   const slow = vWatch && Date.now() - vWatch.start > 12000;
   let h = linked ? 'A receber a imagem…' : 'A ligar os dois aparelhos…';
-  if (!linked && slow) h += '<div style="margin-top:12px;font-size:.8em;color:#fbbf24">' + richText('⚠️ Ainda não ligou: ' + netReason(r.lk, r.rk)) + '</div>';
+  if (!linked && slow) h += '<div style="margin-top:12px;font-size:.8em;color:#fbbf24">' + richText('⚠️ ' + (r.ever ? '' : 'Ainda não ligou: ') + netReason(r.lk, r.rk, r.ever)) + '</div>';
   ov.innerHTML = h;
+}
+/* Num computador/telemóvel (não num carro), o ecrã de destino também mostra o seu endereço local:
+   com os dois endereços visíveis, a ligação direta na mesma rede passa sempre (e dá para ver se os
+   dois estão no mesmo router). Pede o microfone UMA vez; desliga-o logo e nunca o usa. */
+const IN_CAR = /Tesla|QtCarBrowser/i.test(navigator.userAgent) || params.has('tesla');
+let viewerLanAsked = false;
+async function viewerLan() {
+  if (viewerLanAsked || IN_CAR || params.has('nolan') || store('vx-lan-no')) return;
+  viewerLanAsked = true;
+  if (await lanPermission() === 'granted') return;
+  $('vLanNote').classList.remove('hidden');
+  const ok = await Promise.race([enableLan(), new Promise(r => setTimeout(() => r(null), 60000))]);
+  if (ok === false) store('vx-lan-no', '1');
+  $('vLanNote').classList.add('hidden');
+  renderLan();
 }
 async function renegotiate(sdp) {
   const pc = vPc, remote = vRemote;
@@ -822,7 +865,7 @@ async function updateInfo() {
   // 1) Ligação não passa
   if (!w.connectedAt && now - w.start > 15000 && !w.warnedNet) {
     w.warnedNet = true;
-    vToast('A ligação não está a passar. ' + netReason(vRemote.lk, vRemote.rk));
+    vToast('A ligação não está a passar. ' + netReason(vRemote.lk, vRemote.rk, vRemote.ever));
   }
   // 2) Chegam dados mas nenhuma imagem é descodificada -> este formato não funciona neste ecrã
   if (w.bytesAt && d.frames === 0 && now - w.bytesAt > 5000 && d.bytes > 30000 && !w.decodeFail) {
@@ -1107,7 +1150,7 @@ async function makeOffer() {
   sLK = new Set(); sRK = new Set(); sEver = false; sAccepted = false; clearTimeout(sNoPathTimer); $('lanBox').classList.add('hidden');
   pc.onicecandidate = e => {
     if (e.candidate && e.candidate.candidate) {
-      if (pc === sPc) sLK.add(candKind(e.candidate.candidate));
+      if (pc === sPc) addCand(sLK, e.candidate.candidate);
       sSig.send('CANDIDATE', sDst, { candidate: candJson(e.candidate), type: 'media', connectionId: sCid });
     }
   };
@@ -1163,7 +1206,7 @@ async function senderMsg(m) {
       await confirmed();
     } catch (e) { stopSending('O ecrã recusou a ligação (' + e.message + ').', 'err'); }
   } else if (m.type === 'CANDIDATE' && p.connectionId === sCid && p.candidate && p.candidate.candidate) {
-    sRK.add(candKind(p.candidate.candidate));
+    addCand(sRK, p.candidate.candidate);
     if (sPc.remoteDescription) sPc.addIceCandidate(p.candidate).catch(() => {});
     else sPending.push(p.candidate);
   } else if (m.type === 'EXPIRE' && m.src === sDst && !sConnected) {
@@ -1179,10 +1222,10 @@ async function senderMsg(m) {
 /* Os dois aparelhos nunca se chegaram a ver: mostrar o motivo provável e a solução */
 function showNoPath(stillTrying) {
   if (!sPc) return;
-  setStatus($('sStatus'), (stillTrying ? 'Ainda não ligou (continua a tentar). ' : 'Os aparelhos não se conseguiram ligar. ') + netReason(sLK, sRK), stillTrying ? 'warn' : 'err');
+  setStatus($('sStatus'), (stillTrying ? 'Ainda não ligou (continua a tentar). ' : 'Os aparelhos não se conseguiram ligar. ') + netReason(sLK, sRK, sEver), stillTrying ? 'warn' : 'err');
   $('lanInfo').textContent = 'Endereços — este PC: ' + kindsText(sLK) + ' · outro aparelho: ' + kindsText(sRK);
   $('lanBox').classList.remove('hidden');
-  window.__noPath = netReason(sLK, sRK);
+  window.__noPath = netReason(sLK, sRK, sEver);
 }
 /* "Ligação na mesma rede": o Chrome esconde o endereço local do PC (mDNS) a não ser que a página tenha
    permissão de microfone. Pedimos a permissão e desligamos o microfone logo a seguir: nunca é usado. */
