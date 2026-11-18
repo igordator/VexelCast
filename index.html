@@ -109,6 +109,14 @@
   #pathLbl { font-size: 14px; margin-left: 10px; opacity: .85; }
   #pathLbl.direct { color: #4ade80; } #pathLbl.free { color: #93c5fd; } #pathLbl.mine { color: #fbbf24; }
   .relayHelp summary { cursor: pointer; font-weight: 700; }
+  .question { font-size: 18px; font-weight: 700; color: var(--text); margin: 18px 0 6px; }
+  .how { max-width: 560px; margin: 18px auto 6px; text-align: left; color: var(--muted); font-size: 15px; line-height: 1.6; padding-left: 22px; }
+  .nosend { display: block; margin-top: 8px; color: #fbbf24; }
+  details.more { width: 100%; max-width: 520px; margin: 10px auto; text-align: left; }
+  details.more summary { cursor: pointer; color: var(--muted); font-weight: 700; padding: 8px 0; }
+  .step { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--green, #22c55e); color: #04120a; font-weight: 800; font-size: 14px; margin-right: 6px; }
+  .step.light { background: rgba(255,255,255,.9); }
   label.switch { display: flex; align-items: center; gap: 10px; cursor: pointer; }
   label.switch input { width: 24px; height: 24px; margin: 0; accent-color: var(--green); }
   details.net summary { cursor: pointer; font-weight: 700; color: var(--text); font-size: 16px; }
@@ -125,17 +133,24 @@
 <!-- ECRÃ INICIAL -->
 <section id="home" class="screen on">
   <h1>Vexel<span>Cast</span></h1>
-  <p>Mostra o ecrã e o som do teu PC noutro ecrã: carro, TV, tablet ou outro computador.</p>
+  <p>Mostra a imagem e o som de um aparelho noutro ecrã: carro, TV, tablet ou outro computador.</p>
+  <p class="question">Este aparelho vai…</p>
   <div class="choices">
     <button class="choice tesla" onclick="startViewer()">
-      <span class="emoji"><i data-ic="tv"></i></span>Ver neste ecrã
-      <small>Mostrar o código e receber a imagem</small>
+      <span class="emoji"><i data-ic="tv"></i></span>Mostrar a imagem
+      <small>Este é o ecrã onde queres <b>ver</b> (carro, TV…). Aparece um código.</small>
     </button>
     <button class="choice pc" onclick="show('sender')">
-      <span class="emoji"><i data-ic="laptop"></i></span>Transmitir deste PC
-      <small>Partilhar o ecrã/separador com outro ecrã</small>
+      <span class="emoji"><i data-ic="laptop"></i></span>Enviar a imagem
+      <small>Este é o aparelho com o que queres <b>mostrar</b>. Escreves o código.</small>
+      <small class="nosend hidden" id="noSendNote">Este aparelho não consegue enviar pelo browser (telemóveis e tablets não deixam). Usa um computador.</small>
     </button>
   </div>
+  <ol class="how">
+    <li>No ecrã onde queres ver, abre esta página e carrega em <b>Mostrar a imagem</b>.</li>
+    <li>No aparelho com o conteúdo, carrega em <b>Enviar a imagem</b> e escreve o código.</li>
+    <li>Escolhe o que mostrar (um separador ou o ecrã inteiro). Pronto.</li>
+  </ol>
   <p style="font-size:14px">Num carro, usa só com o veículo estacionado.</p>
   <footer class="legal">
     Projeto pessoal e independente. <b>Não é afiliado, associado, autorizado nem aprovado por nenhum fabricante</b>
@@ -148,13 +163,15 @@
 
 <!-- TESLA: CÓDIGO -->
 <section id="viewer" class="screen">
-  <h2>Escreve este código no PC ou no telemóvel</h2>
+  <h2>Escreve este código no aparelho que vai enviar a imagem</h2>
   <div class="code" id="myCode">····-····</div>
   <div class="status" id="vStatus">A ligar ao servidor…</div>
   <div class="fsbox" id="fsBox">
     <button class="btn go" id="fsBtn" onclick="openFullscreen()"><i data-ic="full"></i> Abrir em ecrã inteiro</button>
-    <small>Faz isto antes de ligares o PC. Em browsers que não deixam (por exemplo, nos carros Tesla) abre pelo YouTube: se aparecer o YouTube, carrega em <b>“Ir para o site”</b>.</small>
+    <small>Faz isto antes de começares a enviar. Em browsers que não deixam (por exemplo, nos carros Tesla) abre pelo YouTube: se aparecer o YouTube, carrega em <b>“Ir para o site”</b>.</small>
   </div>
+  <div class="ios hidden" id="vLanNote">O Chrome vai pedir o <b>microfone</b>: carrega em <b>Permitir</b>. É só para os dois aparelhos se encontrarem na mesma rede (cabo/Wi-Fi). O microfone nunca é usado.</div>
+  <details class="more"><summary>Mais opções</summary>
   <div class="vset">
     <label for="codecSel">Formato de vídeo:</label>
     <select id="codecSel" onchange="onCodecSel()">
@@ -164,7 +181,6 @@
       <option value="vp9">VP9</option>
     </select>
   </div>
-  <div class="ios hidden" id="vLanNote">O Chrome vai pedir o <b>microfone</b>: carrega em <b>Permitir</b>. É só para os dois aparelhos se encontrarem na mesma rede (cabo/Wi-Fi). O microfone nunca é usado.</div>
   <div class="vset">
     <label for="latSel">Atraso:</label>
     <select id="latSel" onchange="setLatency(this.value)">
@@ -175,18 +191,19 @@
   </div>
   <div class="netph" data-p="v"></div>
   <button class="btn ghost" onclick="newCode()">Gerar outro código</button>
+  </details>
   <footer class="legal">Projeto independente, sem ligação a nenhum fabricante. Num carro, usa só estacionado. <a href="termos.html">Termos e privacidade</a> · <span class="ver"></span></footer>
 </section>
 
-<!-- PC: TRANSMITIR -->
+<!-- ENVIAR A IMAGEM -->
 <section id="sender" class="screen">
-  <h2><i data-ic="laptop"></i> Transmitir para outro ecrã</h2>
+  <h2><i data-ic="laptop"></i> Enviar a imagem para outro ecrã</h2>
   <div class="card">
-    <label for="code">Código que aparece no ecrã de destino</label>
+    <label for="code"><span class="step">1</span> Escreve o código que aparece no ecrã onde queres ver</label>
     <input id="code" maxlength="9" placeholder="K7P3-X9QM" autocomplete="off" autocapitalize="characters" spellcheck="false" oninput="this.value = fmtCode(this.value)">
+    <label for="quality"><span class="step">2</span> Qualidade</label>
     <div class="row2">
       <div>
-        <label for="quality">Qualidade</label>
         <select id="quality" onchange="onQualityUi()">
           <option value="360">Mínima – 360p (rede muito fraca)</option>
           <option value="540">Leve – 540p (dados móveis)</option>
@@ -195,14 +212,13 @@
           <option value="max">Máxima – resolução do ecrã</option>
         </select>
       </div>
-      <div style="flex:.6">
-        <label for="fps">Fluidez</label>
-        <select id="fps" onchange="onQualityUi()">
-          <option value="30" selected>30 fps</option>
-          <option value="60">60 fps (mais suave)</option>
-        </select>
-      </div>
     </div>
+    <details class="more"><summary>Mais opções</summary>
+    <label for="fps">Fluidez</label>
+    <select id="fps" onchange="onQualityUi()">
+      <option value="30" selected>30 fps</option>
+      <option value="60">60 fps (mais suave)</option>
+    </select>
     <label for="mode">Tipo de conteúdo</label>
     <select id="mode" onchange="setMode(this.value, 'pc')">
       <option value="motion">Vídeos, filmes e jogos (mais fluido)</option>
@@ -210,16 +226,17 @@
     </select>
     <label class="switch"><input type="checkbox" id="adapt" checked onchange="setAdapt(this.checked, 'pc')"> Ajuste automático à rede</label>
     <div class="hint" id="adaptHint"></div>
-    <div class="hint">Na primeira vez, o Chrome pede o <b>microfone</b>: é só para os aparelhos se encontrarem na mesma rede. Nunca é usado.</div>
-    <div class="hint">Podes mudar a qualidade a meio da transmissão, aqui ou no ecrã de destino (<i data-ic="gear"></i>).</div>
-    <button class="btn go" id="goBtn" onclick="startSending()"><i data-ic="play"></i> Começar a transmitir</button>
+    </details>
+    <button class="btn go" id="goBtn" onclick="startSending()"><span class="step light">3</span> Começar a enviar</button>
+    <div class="hint">Na primeira vez, o Chrome pede o <b>microfone</b>: é só para os aparelhos se encontrarem na mesma rede. Nunca é usado.
+      Podes mudar a qualidade a meio, aqui ou no ecrã de destino (<i data-ic="gear"></i>).</div>
     <button class="btn stop" id="stopBtn" onclick="stopSending()" style="display:none"><i data-ic="stop"></i> Parar</button>
     <div class="status" id="sStatus">À espera</div>
     <div class="hint path" id="sPath"></div>
     <div class="verify hidden" id="lanBox">
       <div style="color:var(--muted)" id="lanInfo"></div>
       <div style="color:var(--muted)">Se os dois aparelhos estão no <b>mesmo Wi-Fi</b>, carrega aqui. O Chrome pede autorização para o microfone:
-        é só para ele deixar o PC mostrar o seu endereço na rede local. <b>O microfone nunca é usado</b> (é desligado logo a seguir).</div>
+        é só para ele deixar este aparelho mostrar o seu endereço na rede local. <b>O microfone nunca é usado</b> (é desligado logo a seguir).</div>
       <button class="btn go lanBtn" onclick="lanRetry()">Ligação na mesma rede</button>
       <div id="relayHelpS"></div>
     </div>
@@ -229,8 +246,8 @@
   <div class="netph" data-p="s"></div>
   <div class="tips">
     <b>Dica 1:</b> para ver um vídeo do browser, escolhe <b>“Separador do Chrome/Edge”</b> e deixa ligado
-    <b>“Partilhar também o áudio do separador”</b>. O som deixa de sair no PC e sai só no carro.<br>
-    <b>Dica 2:</b> para mostrar o PC inteiro, escolhe <b>“Ecrã inteiro”</b> e liga <b>“Partilhar áudio do sistema”</b>.<br>
+    <b>“Partilhar também o áudio do separador”</b>. O som deixa de sair neste aparelho e sai só no ecrã de destino.<br>
+    <b>Dica 2:</b> para mostrar o ecrã inteiro, escolhe <b>“Ecrã inteiro”</b> e liga <b>“Partilhar áudio do sistema”</b>.<br>
     <b>Netflix, Disney+, Prime…</b> aparecem a preto (proteção DRM). Esses abre-os diretamente no browser do ecrã de destino.
   </div>
   <button class="btn ghost" onclick="location.href=location.pathname"><i data-ic="back"></i> Voltar</button>
@@ -278,14 +295,14 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
-const APP_VERSION = '4.4';
+const APP_VERSION = '4.7';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
    a imagem quando os dois aparelhos não se conseguem ver diretamente (redes diferentes, dados móveis,
    Wi-Fi de empresa…). As variantes "transport=tcp" passam em redes que bloqueiam UDP. */
 const PUBLIC_ICE = [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478', 'stun:freeturn.net:3478'] },
   { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:eu-0.turn.peerjs.com:3478?transport=tcp'],
     username: 'peerjs', credential: 'peerjsp' }
 ];
@@ -302,6 +319,32 @@ async function openRelayServer(nowSec) {
   return { urls: ['turn:' + OPENRELAY.host + ':80', 'turn:' + OPENRELAY.host + ':80?transport=tcp', 'turns:' + OPENRELAY.host + ':443?transport=tcp'],
            username: user, credential: btoa(String.fromCharCode(...sig)) };
 }
+/* Servidor de retransmissão DA APP (Cloudflare, montado uma vez pelo dono do site; ver cloudflare/LEIA-ME.md).
+   Os utilizadores não configuram nada: o site pede credenciais temporárias ao Worker. Vazio = desligado. */
+const APP_RELAY_URL = window.VX_RELAY_URL || '';
+/* Servidor de retransmissão DA APP com dados fixos (conta grátis ExpressTURN do dono do site, sem cartão):
+   os utilizadores não configuram nada. Se a quota do mês acabar, só deixa de retransmitir; nunca há custos. */
+const APP_TURN = window.VX_APP_TURN || {
+  urls: ['turn:free.expressturn.com:3478?transport=udp', 'turn:free.expressturn.com:3478?transport=tcp',
+         'turns:free.expressturn.com:443?transport=tcp'],
+  username: '000000002110419322',
+  credential: 'E94dSB30YJW47HItvMe2XjaP/NU='
+};
+const APP_TURN_ON = !!(APP_TURN && APP_TURN.credential);
+let APP_RELAY = null, appRelayAt = 0;
+async function loadAppRelay() {
+  if (!APP_RELAY_URL || (APP_RELAY && Date.now() - appRelayAt < 3 * 3600e3)) return;   // credenciais duram 4 h
+  try {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 4000);
+    const r = await fetch(APP_RELAY_URL, { cache: 'no-store', signal: ctl.signal }); clearTimeout(t);
+    if (!r.ok) return;
+    const j = await r.json();
+    const turn = (j.iceServers || []).filter(x => [].concat(x.urls).some(u => /^turns?:/.test(u)) && x.username && x.credential);
+    if (turn.length) { APP_RELAY = turn; appRelayAt = Date.now(); }
+  } catch (e) {}
+}
+const appRelayReady = loadAppRelay();
+if (APP_RELAY_URL) setInterval(loadAppRelay, 30 * 60e3);   // o ecrã de destino pode ficar aberto horas
 const openRelayReady = (window.crypto && crypto.subtle ? openRelayServer().then(x => { OPEN_RELAY = x; }) : Promise.resolve()).catch(() => {});
 // Servidor TURN próprio (opcional, ex.: conta grátis ExpressTURN). Fica guardado só neste browser.
 function myTurn() {
@@ -326,7 +369,7 @@ function iceServers() {
   // retransmissão, o Chrome prefere os que aparecem primeiro: os GRÁTIS. O teu (com limite de dados) fica
   // em último, só é usado se os grátis não conseguirem.
   const t = myTurn();
-  return PUBLIC_ICE.concat(OPEN_RELAY ? [OPEN_RELAY] : [], t ? [t] : []);
+  return PUBLIC_ICE.concat(OPEN_RELAY ? [OPEN_RELAY] : [], APP_TURN_ON ? [APP_TURN] : [], APP_RELAY || [], t ? [t] : []);
 }
 function rtcConfig() { return { iceServers: iceServers(), bundlePolicy: 'max-bundle' }; }
 
@@ -517,7 +560,7 @@ function netReason(L, R, ever) {
   if (onlyMdns(L) && onlyMdns(R))
     return 'Os dois browsers esconderam o endereço na rede local (mDNS) e o router não deixou descobri-lo' +
       (relay ? '' : ', e os servidores de retransmissão gratuitos não responderam') +
-      '. Solução: carrega em “Ligação na mesma rede” no PC que transmite (e, se o ecrã de destino for um computador, também lá, em “Ligar entre redes diferentes”).';
+      '. Solução: carrega em “Ligação na mesma rede” no aparelho que envia (e, se o ecrã de destino for um computador, também lá, em “Ligar entre redes diferentes”).';
   if (!relay)
     return 'Não há caminho direto entre os aparelhos e os servidores de retransmissão gratuitos não responderam nesta rede. ' +
       'Se estão no mesmo Wi-Fi, o router pode estar a isolar os aparelhos (rede de convidados ou “isolamento de clientes”). ' +
@@ -537,13 +580,13 @@ function relayHelpHtml(side) {
     '<div class="row"><button class="btn ghost" onclick="' + open + '">Abrir “Ligar entre redes diferentes”</button></div></div>';
   return '<details class="relayHelp"><summary>Porque é que não liga e como resolver</summary>Quando os dois aparelhos não se conseguem ligar diretamente ' +
     '(redes diferentes, dados móveis, hotspot, alguns routers), a imagem tem de passar por um <b>servidor de retransmissão</b>. ' +
-    'O VexelCast usa <b>servidores grátis que não precisam de conta</b> (PeerJS e Open Relay), mas estes <b>às vezes estão em baixo ou bloqueados</b>, e foi o que aconteceu agora.' +
+    'O VexelCast usa <b>servidores grátis que não precisam de conta</b> (PeerJS e Open Relay' + (APP_RELAY || APP_TURN_ON ? ', e o servidor da app' : '') + '), mas estes <b>às vezes estão em baixo ou bloqueados</b>, e foi o que aconteceu agora.' +
     '<br><br><b>Para funcionar sempre, em qualquer rede</b> (grátis, uma vez só):' +
     '<ol><li>Vai a <b>expressturn.com</b> e cria uma conta grátis (<b>Sign Up Free</b>, sem cartão de crédito).</li>' +
     '<li>No painel da conta, copia o <b>endereço do servidor</b>, o <b>utilizador</b> (username) e a <b>palavra-passe</b> (password).</li>' +
     (side === 's'
       ? '<li>Aqui, carrega no botão abaixo, cola os três dados e carrega em <b>Guardar e testar</b>. Tem de aparecer ✔.</li>'
-      : '<li>No <b>PC/telemóvel que transmite</b>, abre “Ligar entre redes diferentes”, cola os três dados e carrega em <b>Guardar e testar</b>. Tem de aparecer ✔. Chega fazer isto lá; aqui não precisas.</li>') +
+      : '<li>No <b>aparelho que envia a imagem</b>, abre “Ligar entre redes diferentes”, cola os três dados e carrega em <b>Guardar e testar</b>. Tem de aparecer ✔. Chega fazer isto lá; aqui não precisas.</li>') +
     '<li>Volta a ligar. Fica guardado nesse aparelho: não precisas de repetir.</li></ol>' +
     (side === 's' ? '<div class="row"><button class="btn go" onclick="openNet(\'s\')">Abrir “Ligar entre redes diferentes”</button></div>' : '') + '</details>';
 }
@@ -572,6 +615,7 @@ function pathFromStats(list) {
     if (t && host && [].concat(t.urls).some(u => String(u).includes(host))) { out.mine = true; out.name = host; }
     else if (/peerjs\.com$/i.test(host)) out.name = 'PeerJS';
     else if (/openrelay\.metered\.ca$/i.test(host)) out.name = 'Open Relay';
+    else if (/(^|\.)cloudflare\.com$/i.test(host) || (APP_TURN_ON && [].concat(APP_TURN.urls).some(u => String(u).includes(host)))) { out.name = 'da app'; out.app = true; }
     else if (host) out.name = host;
     else out.unknown = true;   // o browser não disse qual: não se assume que é grátis
   } else if (R.candidateType === 'relay') out.kind = 'relay-remote';
@@ -583,6 +627,7 @@ function pathText(pi, rateGBh) {
   if (pi.kind === 'direct') return '✔ Ligação direta entre os aparelhos: sem servidor no meio, grátis e sem limite de dados.';
   if (pi.kind === 'relay-remote') return 'A passar por um servidor de retransmissão escolhido pelo outro aparelho.';
   if (pi.unknown) return 'A passar por um servidor de retransmissão (o browser não diz qual).';
+  if (pi.app) return 'A passar pelo servidor de retransmissão da app. Grátis para ti, sem conta.';
   if (!pi.mine) return 'A passar pelo servidor de retransmissão grátis' + (pi.name ? ' ' + pi.name : '') + ' (sem conta, sem limite teu). Grátis, mas às vezes falha.';
   return '⚠️ A passar pelo TEU servidor (' + pi.name + '), que tem limite mensal de dados: os grátis não conseguiram. ' +
     'Nesta transmissão, este aparelho já enviou ' + fmtBytes(pi.sent) + ' por ele' +
@@ -593,7 +638,7 @@ function pathText(pi, rateGBh) {
 function setPathLabel(pi) {
   const el = $('pathLbl'); if (!el) return;
   el.textContent = !pi ? '' : pi.kind === 'direct' ? 'Direta · grátis' : pi.kind === 'relay-remote' ? 'Retransmissão'
-    : pi.unknown ? 'Retransmissão' : pi.mine ? 'Teu servidor · com limite' : 'Servidor grátis';
+    : pi.unknown ? 'Retransmissão' : pi.mine ? 'Teu servidor · com limite' : pi.app ? 'Servidor da app · grátis' : 'Servidor grátis';
   el.className = !pi ? '' : pi.mine ? 'mine' : pi.kind === 'direct' ? 'direct' : 'free';
 }
 function fmtBytes(b) { return b >= 1e9 ? (b / 1e9).toFixed(2).replace('.', ',') + ' GB' : Math.round(b / 1e6) + ' MB'; }
@@ -708,7 +753,7 @@ async function startViewer(forceNew) {
   setStatus($('vStatus'), 'A ligar ao servidor…');
   viewerLan();
   vSig = new Signal(keys.id, {
-    open: () => { if (!vPc) setStatus($('vStatus'), (vNote ? vNote + ' ' : '') + 'Pronto ✔ À espera do PC/telemóvel…', 'ok'); vNote = ''; },
+    open: () => { if (!vPc) setStatus($('vStatus'), (vNote ? vNote + ' ' : '') + 'Pronto ✔ À espera do aparelho que envia…', 'ok'); vNote = ''; },
     lost: () => { if (!vPc) setStatus($('vStatus'), 'Sem ligação ao servidor, a tentar outra vez… (o carro tem internet?)', 'warn'); },
     error: t => { if (t === 'id-taken') startViewer(true); else setStatus($('vStatus'), 'Erro do servidor. Recarrega a página.', 'err'); },
     message: m => viewerMsg(m)
@@ -734,7 +779,8 @@ async function viewerMsg(m) {
   }
   if (m.type === 'OFFER' && p.type === 'media' && p.sdp && p.sdp.sdp && vPc && vRemote && vRemote.accepted &&
       m.src === vRemote.src && p.connectionId === vRemote.cid) {
-    renegotiate(p.sdp.sdp);   // o mesmo aparelho a reparar a ligação (mudou de rede, etc.)
+    const sdp = p.sdp.sdp;   // o mesmo aparelho a reparar/ajustar a ligação: uma de cada vez, por ordem
+    vRenegChain = vRenegChain.then(() => renegotiate(sdp)).catch(() => {});
   } else if (m.type === 'OFFER' && p.type === 'media' && p.sdp && p.sdp.sdp) {
     vExpect = null;
     closeViewerPc();
@@ -858,6 +904,7 @@ async function viewerLan() {
   $('vLanNote').classList.add('hidden');
   renderLan();
 }
+let vRenegChain = Promise.resolve();
 async function renegotiate(sdp) {
   const pc = vPc, remote = vRemote;
   if (sdpFingerprint(sdp).toUpperCase() !== remote.fp) return;   // não é o mesmo aparelho: ignorar
@@ -971,7 +1018,7 @@ async function updateInfo() {
       const sp = vQ && vQ.path;
       const eff = pi.kind === 'relay' ? pi : (sp && sp.kind === 'relay') ? { kind: 'relay', name: sp.name, mine: sp.mine, fromPc: true, sent: 0 } : pi;
       const txt = eff.kind === 'relay' && eff.fromPc
-        ? (eff.mine ? 'A passar pelo servidor com limite de dados configurado no PC (' + eff.name + '): os grátis não conseguiram.'
+        ? (eff.mine ? 'A passar pelo servidor com limite de dados configurado no aparelho que envia (' + eff.name + '): os grátis não conseguiram.'
                     : 'A passar pelo servidor de retransmissão grátis' + (eff.name ? ' ' + eff.name : '') + ' (sem conta).')
         : pathText(eff, 0);
       const key = eff.kind + '|' + eff.name + '|' + !!eff.mine;
@@ -1091,6 +1138,10 @@ $('player').addEventListener('click', e => { if (e.target.id === 'video') { $('q
 let sSig = null, sPc = null, sStream = null, sDst = null, sCid = null, sPending = [], sConnected = false, sCtrl = null, sRestart = null;
 let sConfirmed = false, sAuto = false, sAnswerFp = '', sIceTimer = null, sIceTries = 0;
 let sLK = new Set(), sRK = new Set(), sEver = false, sNoPathTimer = null, sAccepted = false, sKeys = null, sOfferSdp = '';
+/* A oferta é enviada ANTES de ser registada aqui (para chegar ao ecrã antes dos endereços). Se a resposta
+   chegar muito depressa, tem de esperar que o registo acabe; senão era deitada fora e a ligação ficava presa. */
+let sLocalPending = null;
+function setLocal(pc, offer) { const p = pc.setLocalDescription(offer); sLocalPending = p.catch(() => {}); return p; }
 function showSending() {
   const hasAudio = sStream && sStream.getAudioTracks().length > 0;
   const vt = sStream && sStream.getVideoTracks()[0], st = vt ? vt.getSettings() : {};
@@ -1152,7 +1203,14 @@ async function renegotiateSender(tries) {
     const auth = await authSign(sKeys.key, offerMsg(sCid, offer.sdp));
     if (pc !== sPc) return;
     sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true, auth });
-    await pc.setLocalDescription(offer);
+    await setLocal(pc, offer);
+    // segurança extra: se a resposta nunca chegar, desfaz e tenta outra vez
+    setTimeout(async () => {
+      if (pc === sPc && pc.signalingState === 'have-local-offer' && (tries || 0) < 3) {
+        try { await pc.setLocalDescription({ type: 'rollback' }); } catch (e) {}
+        renegotiateSender((tries || 0) + 1);
+      }
+    }, 6000);
   } catch (e) { console.warn('renegociar', e); }
 }
 function brFor(cur) { return Math.round(QUALITY[cur.q].br * (cur.fps >= 60 ? 1.5 : 1)); }
@@ -1226,7 +1284,7 @@ async function startSending() {
   store('tcast-last', fmtCode(code));
   sCur = readUi();
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-    setStatus($('sStatus'), 'Este browser não deixa partilhar o ecrã. Usa o Chrome ou o Edge no PC.', 'err'); return;
+    setStatus($('sStatus'), 'Este browser não deixa enviar o ecrã (telemóveis e tablets não deixam). Usa o Chrome ou o Edge num computador.', 'err'); return;
   }
   try {
     sStream = await navigator.mediaDevices.getDisplayMedia({
@@ -1276,6 +1334,8 @@ async function startSending() {
 
 async function makeOffer() {
   setStatus($('sStatus'), sRestart ? 'O ecrã pediu outro formato de vídeo (' + sRestart + '). A religar…' : 'A ligar ao ecrã…', 'warn');
+  await loadAppRelay();   // credenciais do servidor da app (rápido: ficam guardadas 3 h)
+  if (!sStream) return;
   const pc = sPc = new RTCPeerConnection(rtcConfig());
   sStream.getTracks().forEach(t => pc.addTrack(t, sStream));
   sConfirmed = false;
@@ -1321,12 +1381,14 @@ async function makeOffer() {
   const auth = await authSign(sKeys.key, offerMsg(sCid, offer.sdp));
   if (pc !== sPc) return;
   sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, auth });
-  await pc.setLocalDescription(offer);
+  await setLocal(pc, offer);
   setBitrate(pc, brFor(sCur), sCur.fps);
 }
 
 async function senderMsg(m) {
   const p = m.payload || {};
+  if (!sPc) return;
+  if (m.type === 'ANSWER' && sLocalPending) await sLocalPending;   // ver setLocal()
   if (!sPc) return;
   if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp && sPc.currentRemoteDescription) {
     // resposta a um "religar" (ICE restart): só é aceite se vier do MESMO ecrã e assinada
@@ -1368,7 +1430,7 @@ async function senderMsg(m) {
 function showNoPath(stillTrying) {
   if (!sPc) return;
   setStatus($('sStatus'), (stillTrying ? 'Ainda não ligou (continua a tentar). ' : 'Os aparelhos não se conseguiram ligar. ') + netReason(sLK, sRK, sEver), stillTrying ? 'warn' : 'err');
-  $('lanInfo').textContent = 'Endereços — este PC: ' + kindsText(sLK) + ' · outro aparelho: ' + kindsText(sRK);
+  $('lanInfo').textContent = 'Endereços — este aparelho: ' + kindsText(sLK) + ' · outro aparelho: ' + kindsText(sRK);
   $('lanBox').classList.remove('hidden');
   const rh = relayFailed(sLK, sRK) ? svgChecks(relayHelpHtml('s')) : '';
   if ($('relayHelpS').__h !== rh) { $('relayHelpS').innerHTML = rh; $('relayHelpS').__h = rh; }
@@ -1388,7 +1450,7 @@ async function lanRetry(p) {
   const where = p === 'v' ? document.querySelector('#net-v .lanState') : $('sStatus');
   if (!ok) { setStatus(where, 'Sem essa permissão não dá para ativar a ligação na mesma rede. (O microfone nunca é usado: é desligado logo a seguir.)', 'err'); return; }
   await renderLan();
-  if (p === 'v') { setStatus(where, '✔ Ativada neste ecrã. Agora volta a ligar a partir do PC/telemóvel.', 'ok'); return; }
+  if (p === 'v') { setStatus(where, '✔ Ativada neste ecrã. Agora volta a ligar a partir do aparelho que envia.', 'ok'); return; }
   if (sStream && sSig) retryConnection();
   else setStatus($('sStatus'), '✔ Ligação na mesma rede ativada. Agora carrega em Começar.', 'ok');
 }
@@ -1402,7 +1464,7 @@ function retryConnection() {
 async function renderLan() {
   const st = await lanPermission();
   const on = st === 'granted';
-  document.querySelectorAll('.lanState').forEach(e => setStatus(e, on ? '✔ Ligação na mesma rede ativada' : 'Desativada (o Chrome esconde o endereço do PC na rede local).', on ? 'ok' : ''));
+  document.querySelectorAll('.lanState').forEach(e => setStatus(e, on ? '✔ Ligação na mesma rede ativada' : 'Desativada (o Chrome esconde o endereço deste aparelho na rede local).', on ? 'ok' : ''));
   document.querySelectorAll('.lanBtn').forEach(b => { b.textContent = on ? 'Tentar outra vez' : 'Ligação na mesma rede'; });
 }
 
@@ -1425,7 +1487,7 @@ async function iceRestart(force) {   // force: só para testes
     const auth = await authSign(sKeys.key, offerMsg(sCid, offer.sdp));
     if (pc !== sPc) return;
     sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true, auth });
-    await pc.setLocalDescription(offer);
+    await setLocal(pc, offer);
   } catch (e) { console.warn('ice restart', e); }
   if (!force) scheduleIceRestart(8000);   // se não voltar, tenta outra vez
 }
@@ -1454,7 +1516,15 @@ function preferH264(pc) {
     });
   } catch (e) { console.warn('codec pref', e); }
 }
-async function setBitrate(pc, br, fps) {
+/* As mudanças de qualidade/modo/ajuste vão para uma fila e cada uma usa os valores MAIS RECENTES:
+   assim uma mudança antiga nunca passa por cima de uma mais nova. */
+let sBrChain = Promise.resolve();
+function setBitrate(pc) {
+  sBrChain = sBrChain.then(() => applyBitrate(pc, brFor(sCur), sCur.fps)).catch(e => console.warn('bitrate', e));
+  return sBrChain;
+}
+async function applyBitrate(pc, br, fps) {
+  if (!pc || pc.connectionState === 'closed') return;
   for (const s of pc.getSenders()) {
     if (!s.track) continue;
     const p = s.getParameters();
@@ -1474,11 +1544,23 @@ async function setBitrate(pc, br, fps) {
       p.degradationPreference = !sAdapt ? 'maintain-framerate-and-resolution' : sMode === 'detail' ? 'maintain-resolution' : 'balanced';
     }
     try { await s.setParameters(p); }
-    catch (e) {   // browsers mais antigos que não conhecem algum dos valores
+    catch (e) {
+      // 1) uma renegociação pelo meio torna os parâmetros antigos inválidos: ler de novo e repetir
       try {
-        if (p.degradationPreference === 'maintain-framerate-and-resolution') p.degradationPreference = 'maintain-resolution';
-        delete p.encodings[0].networkPriority; delete p.encodings[0].priority; delete p.encodings[0].scaleResolutionDownBy;
-        await s.setParameters(p);
+        const q = s.getParameters();
+        if (q.encodings && q.encodings.length) {
+          Object.assign(q.encodings[0], p.encodings[0]);
+          if (p.degradationPreference) q.degradationPreference = p.degradationPreference;
+          await s.setParameters(q); continue;
+        }
+      } catch (e1) {}
+      // 2) browsers mais antigos que não conhecem algum dos valores
+      try {
+        const q = s.getParameters();
+        Object.assign(q.encodings[0], p.encodings[0]);
+        q.degradationPreference = p.degradationPreference === 'maintain-framerate-and-resolution' ? 'maintain-resolution' : p.degradationPreference;
+        delete q.encodings[0].networkPriority; delete q.encodings[0].priority; delete q.encodings[0].scaleResolutionDownBy;
+        await s.setParameters(q);
       } catch (e2) { console.warn('bitrate', e2); }
     }
   }
@@ -1503,7 +1585,7 @@ function netBox(p) {
   return '<details class="net" id="net-' + p + '"><summary>Ligar entre redes diferentes (opcional)</summary>' +
     '<p>Quase sempre liga sozinho, em qualquer rede. Se não ligar (dados móveis, Wi-Fi de hotel ou empresa), cria uma conta ' +
     'grátis num serviço TURN (por exemplo ExpressTURN) e cola aqui os dados. Basta fazê-lo num dos aparelhos (de preferência ' +
-    'no PC). Ficam guardados só neste browser.</p>' +
+    'no aparelho que envia a imagem). Ficam guardados só neste browser.</p>' +
     '<label>Servidor (endereço)</label><input class="tUrl" placeholder="relay1.expressturn.com:3478" autocomplete="off" spellcheck="false" autocapitalize="off">' +
     '<label>Utilizador</label><input class="tUser" autocomplete="off" spellcheck="false" autocapitalize="off">' +
     '<label>Palavra-passe</label><input class="tPass" type="password" autocomplete="off">' +
@@ -1511,7 +1593,7 @@ function netBox(p) {
     '<button class="btn ghost" onclick="clearTurn(\'' + p + '\')">Apagar</button></div>' +
     '<div class="tStat"><div class="status"></div></div>' +
     '<hr style="border-color:#2a3350"><b>Mesma rede (mesmo router) e não liga?</b> ' +
-      (p === 's' ? 'Carrega aqui neste PC.' : 'Se este ecrã for um computador ou telemóvel com Chrome, carrega aqui também (num carro não é preciso).') +
+      (p === 's' ? 'Carrega aqui neste aparelho.' : 'Se este ecrã for um computador ou telemóvel com Chrome, carrega aqui também (num carro não é preciso).') +
       ' O Chrome pede o microfone só para deixar mostrar o endereço deste aparelho na rede local: o microfone nunca é usado.' +
       '<div class="row"><button class="btn ghost lanBtn" onclick="lanRetry(\'' + p + '\')">Ligação na mesma rede</button></div><div class="status lanState"></div>' +
     '<hr style="border-color:#2a3350"><b>Testar a rede deste aparelho</b>' +
@@ -1587,6 +1669,9 @@ async function testNet(p) {
     ['Retransmissão grátis PeerJS (UDP)', gatherKinds([Object.assign({ urls: ['turn:eu-0.turn.peerjs.com:3478'] }, cred)], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']],
     ['Retransmissão grátis PeerJS (TCP)', gatherKinds([Object.assign({ urls: ['turn:eu-0.turn.peerjs.com:3478?transport=tcp'] }, cred)], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']]
   ];
+  await appRelayReady;
+  if (APP_TURN_ON) tests.push(['Retransmissão da app', gatherKinds([APP_TURN], true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']]);
+  if (APP_RELAY) tests.push(['Retransmissão da app (Cloudflare)', gatherKinds(APP_RELAY, true, 8000), k => [k.has('relay'), k.has('relay') ? 'responde' : 'não responde']]);
   await openRelayReady;
   if (OPEN_RELAY) {
     const o = OPEN_RELAY;
@@ -1611,9 +1696,13 @@ const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platfo
 if (IS_IOS) {
   $('iosNote').innerHTML = richText('⚠️ ') + '<b>No iPhone/iPad, nenhum site consegue transmitir o ecrã nem o som</b> (a Apple não deixa: o Safari não tem partilha de ecrã). ' +
     'Para o <b>som do iPhone</b> sair no carro, liga o iPhone ao carro por <b>Bluetooth</b> e escolhe o carro como saída de som. ' +
-    'Para a imagem, transmite a partir do PC ou do Android, ou abre o site/vídeo diretamente no browser do ecrã de destino.';
+    'Para a imagem, envia a partir de um computador ou da app Android, ou abre o site/vídeo diretamente no browser do ecrã de destino.';
   $('iosNote').classList.remove('hidden');
 }
+
+// telemóveis e tablets não conseguem enviar o ecrã pelo browser: avisar logo no ecrã inicial
+const CAN_SEND = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) && !IS_IOS && !/Android/i.test(navigator.userAgent);
+if (!CAN_SEND) $('noSendNote').classList.remove('hidden');
 
 /* ---------------- ARRANQUE ---------------- */
 $('mode').value = sMode;

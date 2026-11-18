@@ -1,6 +1,6 @@
 # VexelCast
 
-Projeto pessoal, gratuito e sem fins lucrativos para partilhar o ecrã e o som de um PC (ou telemóvel Android)
+Projeto pessoal, gratuito e sem fins lucrativos para partilhar o ecrã e o som de um aparelho (computador ou telemóvel Android)
 com o browser de outro aparelho (carro, TV, tablet, computador), por WebRTC. Num carro, usar só **estacionado**.
 
 > **Não é afiliado, associado, autorizado nem aprovado por nenhum fabricante (incluindo a Tesla, Inc.).** “Tesla” e outros nomes

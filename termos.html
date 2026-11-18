@@ -22,13 +22,13 @@
   <p class="muted">Última atualização: 17 de novembro de 2026 (v4)</p>
 
   <div class="box">
-    <p><b>Resumo:</b> o VexelCast é um projeto pessoal, gratuito e sem fins lucrativos para partilhar o ecrã de um PC ou telemóvel com o browser de outro aparelho (carro, TV, tablet, computador).
+    <p><b>Resumo:</b> o VexelCast é um projeto pessoal, gratuito e sem fins lucrativos para partilhar o ecrã de um aparelho com o browser de outro aparelho (carro, TV, tablet, computador).
     Não pertence nem tem qualquer ligação a nenhum fabricante, incluindo a Tesla. Não recolhemos nem guardamos dados. Usas por tua conta e risco (num carro, só com o veículo parado)
     e és responsável pelo que transmites.</p>
   </div>
 
   <h2>1. O que é o VexelCast</h2>
-  <p>O VexelCast é uma página web que liga dois aparelhos (por exemplo, um PC e o browser de um carro, de uma TV ou de um tablet) para mostrar no segundo a imagem e o som do primeiro,
+  <p>O VexelCast é uma página web que liga dois aparelhos (por exemplo, um computador e o browser de um carro, de uma TV ou de um tablet) para mostrar no segundo a imagem e o som do primeiro,
   usando a tecnologia WebRTC dos browsers. É disponibilizado gratuitamente, como projeto pessoal e não comercial.</p>
 
   <h2>2. Sem ligação a fabricantes (marcas registadas)</h2>
@@ -65,7 +65,9 @@
         <li><b>Servidor público PeerJS</b> (0.peerjs.com): ajuda os dois aparelhos a encontrarem-se. Vê identificadores temporários da ligação, não a imagem.</li>
         <li><b>Servidores STUN</b> da Google e da Cloudflare: ajudam a descobrir o caminho de rede.</li>
         <li><b>Servidor TURN público do PeerJS</b>: só se a rede não deixar ligar diretamente. Reencaminha os dados, que continuam encriptados.</li>
+        <li><b>Servidores STUN públicos</b> (Google, Cloudflare e freeTURN): só ajudam cada aparelho a descobrir o seu endereço na internet; não recebem a imagem nem o som.</li>
         <li><b>Servidor TURN público Open Relay (Metered)</b>: segunda retransmissão gratuita, usada só se a rede não deixar ligar diretamente. Reencaminha os dados, que continuam encriptados.</li>
+        <li><b>Servidor de retransmissão da app (ExpressTURN)</b>: usado só quando a ligação direta e os servidores públicos não chegam. Reencaminha os dados, que continuam encriptados de ponta a ponta: o servidor não consegue ver a imagem nem ouvir o som.</li>
         <li><b>Servidor TURN próprio (opcional)</b>: se o configurares em “Ligar entre redes diferentes”, o endereço, o utilizador e a palavra-passe ficam guardados apenas no armazenamento local do teu browser (ou da app) e só são enviados a esse servidor, escolhido e contratado por ti, nas condições do respetivo fornecedor. Também só reencaminha dados encriptados.</li>
       </ul>
     </li>
