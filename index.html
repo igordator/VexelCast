@@ -55,14 +55,17 @@
   .status.err { background: rgba(232,33,39,.2); color: #fca5a5; }
   .tips { font-size: 15px; color: var(--muted); max-width: 520px; line-height: 1.6; }
   .tips b { color: var(--text); }
-  #player { position: fixed; inset: 0; background: black; display: none; }
+  #player { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: black; display: none; }
+  body.playing { overflow: hidden; }
   #player.on { display: block; }
   #video { width: 100%; height: 100%; object-fit: contain; background: black; }
   .overlay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
     background: rgba(0,0,0,.75); color: white; font-size: 28px; padding: 24px 34px; border-radius: 18px;
     border: 2px solid white; cursor: pointer; text-align: center; }
-  .bar { position: absolute; top: 14px; right: 14px; display: flex; gap: 10px; opacity: .25; transition: opacity .3s; }
-  .bar:hover, .bar.show { opacity: 1; }
+  /* escondidos de verdade: não se veem e não tapam nada; aparecem ao tocar no ecrã */
+  .bar { position: absolute; top: 14px; right: 14px; display: flex; gap: 10px; opacity: 0; pointer-events: none; transition: opacity .3s; }
+  .bar.show { opacity: 1; pointer-events: auto; }
+  #player.idle { cursor: none; }
   .bar button { font-size: 18px; padding: 10px 14px; border-radius: 10px; border: 0; background: rgba(255,255,255,.85); cursor: pointer; }
   .row2 { display: flex; gap: 12px; }
   .row2 > div { flex: 1; display: flex; flex-direction: column; gap: 8px; }
@@ -117,11 +120,18 @@
   .step { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;
     background: var(--green, #22c55e); color: #04120a; font-weight: 800; font-size: 14px; margin-right: 6px; }
   .step.light { background: rgba(255,255,255,.9); }
+  .fsSteps { text-align: left; margin: 8px auto 0; padding-left: 22px; max-width: 520px; font-size: 15px; line-height: 1.55; color: var(--muted); }
+  .fsSteps b { color: var(--text); }
+  .fsTip { max-width: 520px; margin: 8px auto 0; font-size: 13.5px; line-height: 1.5; color: var(--muted); text-align: left; }
+  .fsTip b { color: var(--text); }
   label.switch { display: flex; align-items: center; gap: 10px; cursor: pointer; }
   label.switch input { width: 24px; height: 24px; margin: 0; accent-color: var(--green); }
   details.net summary { cursor: pointer; font-weight: 700; color: var(--text); font-size: 16px; }
   details.net input { font-size: 17px; padding: 9px 12px; margin: 4px 0 8px; }
   details.net label { font-size: 14px; display: block; }
+  details.net label.tOnlyRow { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 10px; font-size: 15px; line-height: 1.45; }
+  details.net label.tOnlyRow.hidden { display: none; }
+  details.net .tOnlyRow input { width: auto; margin: 4px 0 0; padding: 0; transform: scale(1.4); flex: none; }
   details.net .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
   details.net .status { margin-top: 8px; font-size: 15px; }
   .ios { background: #1e293b; border: 2px solid #f59e0b; border-radius: 14px; padding: 14px 16px; max-width: 520px; font-size: 15px; line-height: 1.55; }
@@ -167,8 +177,15 @@
   <div class="code" id="myCode">····-····</div>
   <div class="status" id="vStatus">A ligar ao servidor…</div>
   <div class="fsbox" id="fsBox">
-    <button class="btn go" id="fsBtn" onclick="openFullscreen()"><i data-ic="full"></i> Abrir em ecrã inteiro</button>
-    <small>Faz isto antes de começares a enviar. Em browsers que não deixam (por exemplo, nos carros Tesla) abre pelo YouTube: se aparecer o YouTube, carrega em <b>“Ir para o site”</b>.</small>
+    <a class="btn go" id="fsBtn" href="#" onclick="return openFullscreen(event)" style="display:inline-block;text-decoration:none"><i data-ic="full"></i> Abrir em ecrã inteiro</a>
+    <small>Faz isto <b>antes</b> de começares a enviar.</small>
+    <ol class="fsSteps" id="fsSteps">
+      <li>Carrega em <b>Abrir em ecrã inteiro</b> (antes de ligares).</li>
+      <li>Aparece uma página do <b>YouTube</b> com o endereço deste site. Essa página é do YouTube e não dá para a saltar: carrega em <b>“Ir para o site”</b> (ou <b>“Go to site”</b>).</li>
+      <li>Esta página volta a abrir, agora <b>sem a barra do endereço</b>, com um código novo. Escreve esse código no aparelho que envia.</li>
+      <li>Quando ligar, aparece <b>só a transmissão</b>. Para ver os botões, toca na imagem.</li>
+    </ol>
+    <p class="fsTip" id="fsTip">Se continuar com a barra do endereço: abre a app <b>YouTube</b> do carro uma vez, fecha-a e tenta outra vez. Se nem assim, liga normalmente e, já com a imagem a dar, toca na imagem e carrega no botão <i data-ic="full"></i> (ecrã inteiro).</p>
   </div>
   <div class="ios hidden" id="vLanNote">O Chrome vai pedir o <b>microfone</b>: carrega em <b>Permitir</b>. É só para os dois aparelhos se encontrarem na mesma rede (cabo/Wi-Fi). O microfone nunca é usado.</div>
   <details class="more"><summary>Mais opções</summary>
@@ -216,8 +233,8 @@
     <details class="more"><summary>Mais opções</summary>
     <label for="fps">Fluidez</label>
     <select id="fps" onchange="onQualityUi()">
-      <option value="30" selected>30 fps</option>
-      <option value="60">60 fps (mais suave)</option>
+      <option value="60" selected>60 fps (mais suave, recomendado)</option>
+      <option value="30">30 fps (para redes fracas)</option>
     </select>
     <label for="mode">Tipo de conteúdo</label>
     <select id="mode" onchange="setMode(this.value, 'pc')">
@@ -266,7 +283,7 @@
     <span id="pathLbl"></span>
     <button id="qBtn" onclick="toggleQPanel()"><i data-ic="gear"></i> Qualidade</button>
     <button id="infoBtn" onclick="toggleDiag()" title="Diagnóstico"><i data-ic="info"></i></button>
-    <button id="fullBtn" onclick="goFull()"><i data-ic="full"></i> Ecrã inteiro</button>
+    <button id="fullBtn" onclick="goFull()"><i data-ic="full"></i> <span id="fullLbl">Ecrã inteiro</span></button>
     <button onclick="endView()"><i data-ic="x"></i> Fechar</button>
   </div>
   <div id="diag"></div>
@@ -295,7 +312,7 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
-const APP_VERSION = '4.7';
+const APP_VERSION = '5.1';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
@@ -363,15 +380,23 @@ function turnUrls(text) {
   }
   return [...new Set(out)];
 }
-function iceServers() {
+// "Usar só o meu servidor": com um TURN próprio guardado, não usar a retransmissão da app nem as grátis
+// (a ligação direta continua a ser tentada primeiro: é a melhor e não gasta servidor nenhum).
+function ownOnly() { return !!myTurn() && store('vx-turn-only') !== '0'; }
+function dropRelayCand(c) { return / typ relay( |$)/.test((c && c.candidate) || ''); }
+function iceServers(onlyMine) {
   if (params.has('noice')) return [];
+  if (onlyMine) {
+    const m = myTurn();
+    return PUBLIC_ICE.filter(x => [].concat(x.urls).every(u => /^stun:/i.test(u))).concat(m ? [m] : []);
+  }
   // Ordem = preferência. Ligação direta (sem servidor) vem sempre primeiro; entre servidores de
   // retransmissão, o Chrome prefere os que aparecem primeiro: os GRÁTIS. O teu (com limite de dados) fica
   // em último, só é usado se os grátis não conseguirem.
   const t = myTurn();
   return PUBLIC_ICE.concat(OPEN_RELAY ? [OPEN_RELAY] : [], APP_TURN_ON ? [APP_TURN] : [], APP_RELAY || [], t ? [t] : []);
 }
-function rtcConfig() { return { iceServers: iceServers(), bundlePolicy: 'max-bundle' }; }
+function rtcConfig(onlyMine) { return { iceServers: iceServers(onlyMine), bundlePolicy: 'max-bundle' }; }
 
 /* Afinação da ligação (SDP), aplicada pelo emissor à resposta do ecrã antes de a usar:
    - vídeo: começa logo com bitrate alto (sem os ~10 s de imagem desfocada no arranque) e levanta
@@ -413,7 +438,7 @@ function tuneSdp(sdp, video, audio) {
     return res;
   }).flat().join(eol);
 }
-const OPUS_HQ = { stereo: 1, 'sprop-stereo': 1, maxaveragebitrate: 256000, maxplaybackrate: 48000, useinbandfec: 1, usedtx: 0 };
+const OPUS_HQ = { stereo: 1, 'sprop-stereo': 1, maxaveragebitrate: 128000, maxplaybackrate: 48000, useinbandfec: 1, usedtx: 0 };
 // fixed = ajuste automático desligado: arranca no máximo e não deixa o bitrate descer abaixo de 85%
 function videoSdpParams(br, fixed) {
   const k = Math.round(br / 1000);
@@ -678,14 +703,35 @@ const CODECS = ['vp8', 'h264', 'vp9'];
 const CODEC_LABEL = { auto: 'Automático', vp8: 'VP8', h264: 'H.264', vp9: 'VP9' };
 let vCodec = null, vFailed = [], vWatch = null, vDiagForced = false, vDiagMsg = '', vExpect = null, vAskTimer = null;
 function codecChoice() { const c = store('tcast-codec'); return CODECS.includes(c) ? c : 'auto'; }
+/* "Automático": escolhe o formato que dá a mesma imagem com MENOS dados e que este ecrã descodifica bem
+   (de preferência com a placa gráfica, para não dar soluços). Se a imagem não aparecer, passa ao seguinte
+   e lembra-se disso neste aparelho. */
+let vAutoOrder = CODECS.slice();
+const vAutoReady = (async () => {
+  try {
+    if (!navigator.mediaCapabilities || !navigator.mediaCapabilities.decodingInfo) return;
+    const mime = { vp9: 'video/VP9', h264: 'video/H264', vp8: 'video/VP8' };
+    const eff = ['vp9', 'h264', 'vp8'];
+    const tiers = await Promise.all(eff.map(async c => {
+      try {
+        const r = await Promise.race([navigator.mediaCapabilities.decodingInfo({ type: 'webrtc',
+          video: { contentType: mime[c], width: 1920, height: 1080, bitrate: 6000000, framerate: 60 } }), new Promise(res => setTimeout(() => res(null), 1500))]);
+        if (!r) return 9;
+        return !r.supported ? 3 : r.powerEfficient && r.smooth ? 0 : r.smooth ? 1 : 2;
+      } catch (e) { return 9; }
+    }));
+    if (tiers.every(t => t === 9)) return;   // o browser não sabe dizer: fica a ordem antiga (já testada)
+    vAutoOrder = eff.map((c, i) => [c, tiers[i], i]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(x => x[0]);
+  } catch (e) {}
+})();
+function codecBad() { try { return JSON.parse(store('vx-codec-bad') || '[]'); } catch (e) { return []; } }
 function codecToUse() {
   const c = codecChoice();
   if (c !== 'auto') return c;
-  const ok = store('tcast-codec-ok');
-  if (CODECS.includes(ok) && !vFailed.includes(ok)) return ok;
-  return CODECS.find(x => !vFailed.includes(x)) || 'vp8';
+  const bad = codecBad();
+  return vAutoOrder.find(x => !vFailed.includes(x) && !bad.includes(x)) || vAutoOrder.find(x => !vFailed.includes(x)) || 'vp8';
 }
-function onCodecSel() { store('tcast-codec', $('codecSel').value); vFailed = []; }
+function onCodecSel() { store('tcast-codec', $('codecSel').value); vFailed = []; store('vx-codec-bad', ''); }
 const CODEC_RE = { vp8: /VP8/i, h264: /H264/i, vp9: /VP9/i };
 function applyCodecPref(pc, want) {
   try {
@@ -714,7 +760,24 @@ function preferInSdp(sdp, want) {
   return lines.join('\r\n');
 }
 function toggleDiag() { vDiagForced = !$('diag').classList.contains('on'); $('diag').classList.toggle('on', vDiagForced); $('infoBtn').classList.remove('alert'); flashBar(); }
-async function openFullscreen() {
+function fsTrickUrl() {
+  const keep = ['server', 'noice'].filter(k => params.has(k)).map(k => '&' + k + (params.get(k) ? '=' + encodeURIComponent(params.get(k)) : '')).join('');
+  return 'https://www.youtube.com/redirect?q=' + encodeURIComponent(location.origin + location.pathname + '?tesla&fs=1' + keep);
+}
+// Tenta pôr em ecrã inteiro sem ficar pendurado se o browser ignorar o pedido.
+async function tryFs(fn) {
+  try { const r = fn(); if (r && r.then) await Promise.race([r, new Promise(res => setTimeout(res, 700))]); } catch (e) {}
+  await new Promise(r => setTimeout(r, 150));
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+function openFullscreen(ev) {
+  // No carro: deixa o browser seguir o link do YouTube como um toque normal (é o que o Tesla reconhece melhor).
+  if (IN_CAR) { $('fsBtn').href = fsTrickUrl(); return true; }
+  if (ev) ev.preventDefault();
+  openFullscreenPc();
+  return false;
+}
+async function openFullscreenPc() {
   const el = document.documentElement;
   try { const r = (el.requestFullscreen || el.webkitRequestFullscreen).call(el); if (r && r.then) await r; } catch (e) {}
   await new Promise(r => setTimeout(r, 300));
@@ -722,9 +785,7 @@ async function openFullscreen() {
   openFullscreenTrick();   // ex.: browser do Tesla
 }
 function openFullscreenTrick() {
-  const keep = ['server', 'noice'].filter(k => params.has(k)).map(k => '&' + k + (params.get(k) ? '=' + encodeURIComponent(params.get(k)) : '')).join('');
-  const target = location.origin + location.pathname + '?tesla&fs=1' + keep;
-  location.href = 'https://www.youtube.com/redirect?q=' + encodeURIComponent(target);
+  location.href = fsTrickUrl();
 }
 /* Sem janelas a saltar: os avisos ficam no painel (i), e o botão (i) fica amarelo até o abrires. */
 function vNotice(msg) {
@@ -789,7 +850,12 @@ async function viewerMsg(m) {
     kindsFromSdp(p.sdp.sdp, remote.rk);
     vPending = [];
     vStream = new MediaStream();
-    const pc = vPc = new RTCPeerConnection(rtcConfig());
+    const mine = ownOnly();
+    remote.dropRelay = mine && !p.own;   // uso só o meu servidor: ignorar as retransmissões do outro aparelho
+    remote.own = mine;
+    remote.peerOwn = !!p.own;
+    // o outro aparelho pediu "só o meu servidor": aqui também não se usam os servidores da app nem os grátis
+    const pc = vPc = new RTCPeerConnection(rtcConfig(mine || !!p.own));
     pc.ontrack = e => {
       if (pc !== vPc) return;
       vStream.addTrack(e.track);
@@ -805,6 +871,12 @@ async function viewerMsg(m) {
         if (m.t === 'state') { vQ = m; renderQPanel(); }
       };
       vCtrl.onclose = () => { if (pc === vPc) { vQ = null; renderQPanel(); } };
+      // dizer ao emissor quantos pixéis este ecrã tem (para não enviar mais do que se consegue ver)
+      const sendScreen = () => { try {
+        const d = window.devicePixelRatio || 1;
+        vCtrl.send(JSON.stringify({ t: 'screen', w: Math.round(Math.max(screen.width, innerWidth) * d), h: Math.round(Math.max(screen.height, innerHeight) * d) }));
+      } catch (err) {} };
+      if (vCtrl.readyState === 'open') sendScreen(); else vCtrl.addEventListener('open', sendScreen);
     };
     pc.onicecandidate = e => {
       if (!(e.candidate && e.candidate.candidate)) return;
@@ -842,6 +914,8 @@ async function viewerMsg(m) {
       }
     };
     setStatus($('vStatus'), 'A receber ligação…', 'warn');
+    await Promise.race([vAutoReady, new Promise(r => setTimeout(r, 1500))]);
+    if (pc !== vPc) return;
     vCodec = codecToUse();
     vWatch = { start: Date.now(), connectedAt: 0, framesAt: 0 };
     try {
@@ -856,7 +930,7 @@ async function viewerMsg(m) {
       // resposta assinada com a chave do código: o PC sabe que é mesmo este ecrã
       const auth = await authSign(vKeys.key, answerMsg(remote.cid, p.sdp.sdp, sdp));
       if (pc !== vPc) return;
-      vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp }, type: 'media', connectionId: remote.cid, auth });
+      vSig.send('ANSWER', remote.src, { sdp: { type: 'answer', sdp }, type: 'media', connectionId: remote.cid, auth, own: remote.own });
       remote.accepted = true;
       if (vWatch) { vWatch.start = Date.now(); if (['connected', 'completed'].includes(pc.iceConnectionState)) vWatch.connectedAt = Date.now(); }
       setStatus($('vStatus'), 'A ligar…', 'warn');
@@ -866,6 +940,7 @@ async function viewerMsg(m) {
       backToCode('Erro na ligação (' + e.message + ').');
     }
   } else if (m.type === 'CANDIDATE' && vRemote && p.connectionId === vRemote.cid && p.candidate && p.candidate.candidate) {
+    if (vRemote.dropRelay && dropRelayCand(p.candidate)) return;
     addCand(vRemote.rk, p.candidate.candidate);
     if (vPc && vPc.remoteDescription) vPc.addIceCandidate(p.candidate).catch(() => {});
     else vPending.push(p.candidate);
@@ -1067,7 +1142,8 @@ function decodeFailed() {
   }
   if (!vFailed.includes(bad)) vFailed.push(bad);
   if (store('tcast-codec-ok') === bad) store('tcast-codec-ok', '');
-  const next = CODECS.find(x => !vFailed.includes(x));
+  { const b = codecBad(); if (!b.includes(bad)) { b.push(bad); store('vx-codec-bad', JSON.stringify(b)); } }
+  const next = vAutoOrder.find(x => !vFailed.includes(x));
   if (!next) { vNotice('Nenhum formato de vídeo funcionou neste ecrã. Diz-me o que aparece neste painel.'); vFailed = []; return; }
   vNotice('A imagem não aparece com ' + CODEC_LABEL[bad] + '. A tentar com ' + CODEC_LABEL[next] + '…');
   // pedir ao PC/telemóvel para religar (o ecrã de destino vai responder com o novo formato)
@@ -1090,11 +1166,13 @@ function playStream(stream) {
   const v = $('video');
   if (v.srcObject !== stream) { v.srcObject = stream; v.muted = true; }
   $('unmute').innerHTML = richText('🔊 Toca aqui para ligar o som');
-  $('player').classList.add('on');
+  const fresh = !$('player').classList.contains('on');
+  $('player').classList.add('on'); document.body.classList.add('playing');
+  // os botões ficam escondidos: só aparecem quando tocas/clicas na imagem
+  if (fresh) { clearTimeout(barTimer); $('bar').classList.remove('show'); $('player').classList.add('idle'); }
   if (!vInfoTimer) vInfoTimer = setInterval(updateInfo, 1000);
   $('unmute').style.display = 'none';
   v.play().catch(() => {});
-  flashBar();
 }
 function unmute() {
   const v = $('video');
@@ -1103,21 +1181,24 @@ function unmute() {
   $('unmute').style.display = 'none';
 }
 function goFull() {
+  // No Tesla, o ecrã inteiro só existe no "browser do Theater", que se abre pelo truque do YouTube.
+  // Esse browser é outro: a ligação atual fecha e aparece um código novo (fica explicado no botão).
+  if (document.fullscreenElement || document.webkitFullscreenElement) {   // já está: o mesmo botão sai
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document); return;
+  }
   const el = $('player'), v = $('video');
   const tries = [() => el.requestFullscreen && el.requestFullscreen(), () => el.webkitRequestFullscreen && el.webkitRequestFullscreen(),
                  () => v.requestFullscreen && v.requestFullscreen(), () => v.webkitEnterFullscreen && v.webkitEnterFullscreen()];
   (async () => {
-    for (const t of tries) { try { const r = t(); if (r && r.then) await r; if (document.fullscreenElement || document.webkitFullscreenElement) return; } catch (e) {} }
-    setTimeout(() => {
-      if (!document.fullscreenElement && !document.webkitFullscreenElement)
-        vToast('Este browser não deixa pôr esta página em ecrã inteiro assim. Fecha (✕ Fechar) e, no ecrã do código, carrega em “⛶ Abrir em ecrã inteiro”.');
-    }, 400);
+    for (const t of tries) if (await tryFs(t)) return;
+    if (IN_CAR && !params.has('fs')) { endView(); openFullscreenTrick(); return; }   // último recurso no carro (dá um código novo)
+    vToast('Este browser não deixa pôr esta página em ecrã inteiro assim. Fecha (✕ Fechar) e, no ecrã do código, carrega em “⛶ Abrir em ecrã inteiro”.');
   })();
 }
 function backToCode(msg) {
   closeViewerPc();
   vDiagMsg = ''; vDiagForced = false; $('diag').classList.remove('on'); $('infoBtn').classList.remove('alert'); setPathLabel(null);
-  $('player').classList.remove('on');
+  $('player').classList.remove('on'); document.body.classList.remove('playing');
   $('video').srcObject = null;
   vStream = null;
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -1127,12 +1208,26 @@ function endView() {
   if (vRemote && vSig) vSig.send('LEAVE', vRemote.src, { type: 'media', connectionId: vRemote.cid });
   backToCode('Fechado.');
 }
-let barTimer;
+let barTimer, barShownAt = 0;
 function flashBar() {
-  $('bar').classList.add('show'); clearTimeout(barTimer);
-  barTimer = setTimeout(() => { if (!$('qPanel').classList.contains('on')) $('bar').classList.remove('show'); }, 3000);
+  if (!$('bar').classList.contains('show')) barShownAt = Date.now();
+  $('bar').classList.add('show'); $('player').classList.remove('idle'); clearTimeout(barTimer);
+  barTimer = setTimeout(() => {
+    if ($('qPanel').classList.contains('on')) return;
+    $('bar').classList.remove('show'); $('player').classList.add('idle');
+  }, 3500);
 }
-$('player').addEventListener('click', e => { if (e.target.id === 'video') { $('qPanel').classList.remove('on'); flashBar(); } });
+// tocar na imagem: se os botões estão escondidos, mostra-os; se estão à vista, esconde-os (e fecha o painel)
+$('player').addEventListener('click', e => {
+  if (e.target.id !== 'video') return;
+  if ($('qPanel').classList.contains('on')) { $('qPanel').classList.remove('on'); flashBar(); return; }
+  // (se acabaram de aparecer — por ex. pelo próprio toque —, não os esconder logo)
+  if ($('bar').classList.contains('show') && Date.now() - barShownAt > 600) { clearTimeout(barTimer); $('bar').classList.remove('show'); $('player').classList.add('idle'); }
+  else flashBar();
+});
+// (mexer o rato já não mostra os botões: só aparecem quando clicas na imagem)
+// ao rodar o telemóvel, voltar ao topo para a imagem ocupar o ecrã todo
+window.addEventListener('orientationchange', () => setTimeout(() => window.scrollTo(0, 0), 300));
 
 /* ---------------- PC (TRANSMITIR) ---------------- */
 let sSig = null, sPc = null, sStream = null, sDst = null, sCid = null, sPending = [], sConnected = false, sCtrl = null, sRestart = null;
@@ -1164,7 +1259,7 @@ const QUALITY = {
   1080: { h: 1080, br: 9000000 },
   max:  { h: 2160, br: 20000000 }
 };
-let sCur = { q: '720', fps: 30 };
+let sCur = { q: '720', fps: 60 };
 /* Tipo de conteúdo: 'motion' = vídeos/jogos (prioridade à fluidez), 'detail' = texto/apresentações
    (prioridade à nitidez das letras). */
 const MODE_LABEL = { motion: 'Vídeo', detail: 'Texto' };
@@ -1202,7 +1297,7 @@ async function renegotiateSender(tries) {
     const offer = await pc.createOffer();
     const auth = await authSign(sKeys.key, offerMsg(sCid, offer.sdp));
     if (pc !== sPc) return;
-    sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true, auth });
+    sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true, auth, own: sOwn });
     await setLocal(pc, offer);
     // segurança extra: se a resposta nunca chegar, desfaz e tenta outra vez
     setTimeout(async () => {
@@ -1214,6 +1309,38 @@ async function renegotiateSender(tries) {
   } catch (e) { console.warn('renegociar', e); }
 }
 function brFor(cur) { return Math.round(QUALITY[cur.q].br * (cur.fps >= 60 ? 1.5 : 1)); }
+/* Mesma qualidade com menos dados:
+   - formatos mais modernos precisam de menos bits para a mesma imagem (VP9 ~30% menos que VP8);
+   - se a imagem enviada é mais pequena que a qualidade escolhida (janela pequena, ou o ecrã de destino tem
+     menos pixéis), o teto de bitrate baixa na mesma proporção, em vez de gastar bits que não se veem. */
+const CODEC_EFF = { VP8: 1, H264: 0.85, VP9: 0.7, AV1: 0.6, H265: 0.65 };
+let sCodec = '', sScreen = null, sOwn = false, sDropRelay = false;
+function sdpVideoCodec(sdp) {
+  const l = sdp.split(/\r?\n/), m = l.find(x => x.startsWith('m=video '));
+  if (!m) return '';
+  const pt = m.split(' ')[3], r = l.find(x => x.startsWith('a=rtpmap:' + pt + ' '));
+  return r ? r.split(' ')[1].split('/')[0].toUpperCase() : '';
+}
+function fitInfo(track) {
+  const st = (track && track.getSettings && track.getSettings()) || {};
+  const w = st.width || 0, h = st.height || 0;
+  let scale = 1;
+  if (w && h && sScreen && sScreen.w && sScreen.h) {
+    const sL = Math.max(w, h), sS = Math.min(w, h), dL = Math.max(sScreen.w, sScreen.h), dS = Math.min(sScreen.w, sScreen.h);
+    scale = Math.max(1, sL / dL, sS / dS);   // o mínimo de redução que ainda enche o ecrã de destino
+    scale = Math.round(scale * 100) / 100;
+  }
+  return { w, h, scale };
+}
+function brEff(cur) {
+  let f = CODEC_EFF[sCodec] || 1;
+  const vt = sStream && sStream.getVideoTracks()[0], fit = fitInfo(vt);
+  if (fit.w && fit.h) {
+    const nh = QUALITY[cur.q].h, nom = nh * nh * 16 / 9, enc = (fit.w / fit.scale) * (fit.h / fit.scale);
+    f *= Math.min(1, Math.max(0.3, Math.pow(enc / nom, 0.75)));
+  }
+  return Math.round(brFor(cur) * f);
+}
 function videoConstraints(cur) {
   const c = { frameRate: { ideal: cur.fps, max: cur.fps } };
   if (cur.q !== 'max') c.height = { max: QUALITY[cur.q].h };
@@ -1226,7 +1353,7 @@ function readUi() {
 }
 function onQualityUi() {
   const cur = readUi();
-  store('tcast-q', cur.q); store('tcast-fps', String(cur.fps));
+  store('tcast-q', cur.q); store('vx-fps', String(cur.fps));
   if (sStream) setQuality(cur.q, cur.fps, 'pc');
 }
 // Muda a qualidade a meio da transmissão, sem desligar
@@ -1235,7 +1362,7 @@ async function setQuality(q, fps, from) {
   fps = Number(fps) >= 60 ? 60 : 30;
   sCur = { q: String(q), fps };
   $('quality').value = sCur.q; $('fps').value = String(fps);
-  store('tcast-q', sCur.q); store('tcast-fps', String(fps));
+  store('tcast-q', sCur.q); store('vx-fps', String(fps));
   const vt = sStream && sStream.getVideoTracks()[0];
   if (vt) {
     const c = videoConstraints(sCur);
@@ -1332,12 +1459,34 @@ async function startSending() {
   });
 }
 
+/* Se este computador não conseguir codificar VP9 com fluidez, não o oferece (evita soluços por falta de CPU). */
+const sVp9Enc = (async () => {
+  try {
+    if (!navigator.mediaCapabilities || !navigator.mediaCapabilities.encodingInfo) return null;
+    return await Promise.race([navigator.mediaCapabilities.encodingInfo({ type: 'webrtc',
+      video: { contentType: 'video/VP9', width: 1920, height: 1080, bitrate: 6000000, framerate: 60 } }), new Promise(r => setTimeout(() => r(null), 1500))]);
+  } catch (e) { return null; }
+})();
+async function dropVp9IfSlow(pc) {
+  const e = await Promise.race([sVp9Enc, new Promise(r => setTimeout(() => r(null), 1500))]);
+  if (!e || (e.supported !== false && e.smooth !== false)) return;
+  try {
+    const caps = RTCRtpReceiver.getCapabilities && RTCRtpReceiver.getCapabilities('video');
+    const keep = caps && caps.codecs.filter(c => !/vp9/i.test(c.mimeType));
+    if (!keep || !keep.some(c => /vp8|h264|av1/i.test(c.mimeType))) return;
+    pc.getTransceivers().forEach(t => { if (t.sender && t.sender.track && t.sender.track.kind === 'video' && t.setCodecPreferences) t.setCodecPreferences(keep); });
+    window.__vp9Dropped = true;
+  } catch (err) {}
+}
 async function makeOffer() {
   setStatus($('sStatus'), sRestart ? 'O ecrã pediu outro formato de vídeo (' + sRestart + '). A religar…' : 'A ligar ao ecrã…', 'warn');
   await loadAppRelay();   // credenciais do servidor da app (rápido: ficam guardadas 3 h)
   if (!sStream) return;
-  const pc = sPc = new RTCPeerConnection(rtcConfig());
+  sOwn = ownOnly(); sDropRelay = sOwn;
+  const pc = sPc = new RTCPeerConnection(rtcConfig(sOwn));
   sStream.getTracks().forEach(t => pc.addTrack(t, sStream));
+  await dropVp9IfSlow(pc);
+  if (pc !== sPc || !sStream) return;
   sConfirmed = false;
   // (o formato de vídeo é escolhido pelo ecrã de destino na resposta)
   // Canal de controlo: o ecrã de destino pode pedir outra qualidade
@@ -1345,6 +1494,7 @@ async function makeOffer() {
   sCtrl.onopen = () => sendState();
   sCtrl.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch (err) { return; }
+    if (m.t === 'screen' && m.w > 0 && m.h > 0) { sScreen = { w: Math.min(8192, m.w | 0), h: Math.min(8192, m.h | 0) }; setBitrate(pc); return; }
     if (m.t === 'set') {
       if (typeof m.auto === 'boolean' && m.auto !== sAdapt) setAdapt(m.auto, 'tesla');
       if (m.mode && m.mode !== sMode) setMode(m.mode, 'tesla');
@@ -1380,7 +1530,7 @@ async function makeOffer() {
   // A oferta vai primeiro, para chegar ao ecrã de destino antes dos candidatos ICE; assinada com a chave do código
   const auth = await authSign(sKeys.key, offerMsg(sCid, offer.sdp));
   if (pc !== sPc) return;
-  sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, auth });
+  sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, auth, own: sOwn });
   await setLocal(pc, offer);
   setBitrate(pc, brFor(sCur), sCur.fps);
 }
@@ -1394,7 +1544,7 @@ async function senderMsg(m) {
     // resposta a um "religar" (ICE restart): só é aceite se vier do MESMO ecrã e assinada
     if (fpOf(p.sdp.sdp) !== sAnswerFp || sPc.signalingState !== 'have-local-offer') return;
     if (!(await authCheck(sKeys.key, answerMsg(sCid, sPc.localDescription.sdp, p.sdp.sdp), p.auth))) return;
-    try { await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brFor(sCur), !sAdapt), OPUS_HQ) }); }
+    try { await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brEff(sCur), !sAdapt), OPUS_HQ) }); }
     catch (e) { console.warn('religar', e); }
   } else if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp) {
     // só aceita a resposta assinada com a chave do código (prova que é o ecrã certo)
@@ -1404,15 +1554,18 @@ async function senderMsg(m) {
     }
     try {
       sAnswerFp = sdpFingerprint(p.sdp.sdp).toUpperCase();
+      sDropRelay = sOwn && !p.own;   // eu uso só o meu servidor e o ecrã não tem um seu: não usar retransmissões do ecrã
+      sCodec = sdpVideoCodec(p.sdp.sdp);
       kindsFromSdp(p.sdp.sdp, sRK);
       { const pc = sPc; clearTimeout(sNoPathTimer); sNoPathTimer = setTimeout(() => { if (pc === sPc && !sEver) showNoPath(true); }, window.NOPATH_MS || 15000); }
-      await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brFor(sCur), !sAdapt), OPUS_HQ) });
+      await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brEff(sCur), !sAdapt), OPUS_HQ) });
       for (const c of sPending) await sPc.addIceCandidate(c).catch(() => {});
       sPending = [];
       sAuto = false; sAccepted = true;
       await confirmed();
     } catch (e) { stopSending('O ecrã recusou a ligação (' + e.message + ').', 'err'); }
   } else if (m.type === 'CANDIDATE' && p.connectionId === sCid && p.candidate && p.candidate.candidate) {
+    if (sDropRelay && dropRelayCand(p.candidate)) return;
     addCand(sRK, p.candidate.candidate);
     if (sPc.remoteDescription) sPc.addIceCandidate(p.candidate).catch(() => {});
     else sPending.push(p.candidate);
@@ -1486,7 +1639,7 @@ async function iceRestart(force) {   // force: só para testes
     const offer = await pc.createOffer({ iceRestart: true });
     const auth = await authSign(sKeys.key, offerMsg(sCid, offer.sdp));
     if (pc !== sPc) return;
-    sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true, auth });
+    sSig.send('OFFER', sDst, { sdp: { type: 'offer', sdp: offer.sdp }, type: 'media', connectionId: sCid, metadata: null, renegotiate: true, auth, own: sOwn });
     await setLocal(pc, offer);
   } catch (e) { console.warn('ice restart', e); }
   if (!force) scheduleIceRestart(8000);   // se não voltar, tenta outra vez
@@ -1520,7 +1673,7 @@ function preferH264(pc) {
    assim uma mudança antiga nunca passa por cima de uma mais nova. */
 let sBrChain = Promise.resolve();
 function setBitrate(pc) {
-  sBrChain = sBrChain.then(() => applyBitrate(pc, brFor(sCur), sCur.fps)).catch(e => console.warn('bitrate', e));
+  sBrChain = sBrChain.then(() => applyBitrate(pc, brEff(sCur), sCur.fps)).catch(e => console.warn('bitrate', e));
   return sBrChain;
 }
 async function applyBitrate(pc, br, fps) {
@@ -1530,13 +1683,14 @@ async function applyBitrate(pc, br, fps) {
     const p = s.getParameters();
     if (!p.encodings || !p.encodings.length) continue;
     if (s.track.kind === 'audio') {
-      // som estéreo a 256 kbps e com prioridade na rede: o som nunca deve falhar
-      p.encodings[0].maxBitrate = 256000;
+      // som estéreo a 128 kbps (o Opus já soa igual ao original assim) e com prioridade na rede
+      p.encodings[0].maxBitrate = 128000;
       p.encodings[0].priority = 'high'; p.encodings[0].networkPriority = 'high';
     } else {
+      const fit = fitInfo(s.track);
       p.encodings[0].maxBitrate = br;
       p.encodings[0].maxFramerate = fps || 30;
-      p.encodings[0].scaleResolutionDownBy = 1;
+      p.encodings[0].scaleResolutionDownBy = fit.scale;   // nunca mais pixéis do que o ecrã de destino consegue mostrar
       p.encodings[0].networkPriority = 'high';
       // Ajuste automático desligado: não baixar nem a resolução nem os fps.
       // Ligado + Vídeo: se a rede apertar, baixa um pouco de tudo (mantém fluido). Ligado + Texto: mantém
@@ -1591,6 +1745,8 @@ function netBox(p) {
     '<label>Palavra-passe</label><input class="tPass" type="password" autocomplete="off">' +
     '<div class="row"><button class="btn ghost" onclick="saveTurn(\'' + p + '\')">Guardar e testar</button>' +
     '<button class="btn ghost" onclick="clearTurn(\'' + p + '\')">Apagar</button></div>' +
+    '<label class="chk tOnlyRow"><input type="checkbox" class="tOnly" onchange="setTurnOnly(this.checked)"> ' +
+      '<span><b>Usar o meu servidor em vez dos da app</b> (e dos grátis). A ligação direta continua a ser tentada primeiro.</span></label>' +
     '<div class="tStat"><div class="status"></div></div>' +
     '<hr style="border-color:#2a3350"><b>Mesma rede (mesmo router) e não liga?</b> ' +
       (p === 's' ? 'Carrega aqui neste aparelho.' : 'Se este ecrã for um computador ou telemóvel com Chrome, carrega aqui também (num carro não é preciso).') +
@@ -1607,7 +1763,9 @@ function renderNet() {
     netEl(p, 'tUrl').value = t ? (t.label || t.urls.join(' ')) : '';
     netEl(p, 'tUser').value = t ? t.username || '' : '';
     netEl(p, 'tPass').value = t ? t.credential || '' : '';
-    setStatus(netEl(p, 'tStat'), t ? '✔ Servidor TURN próprio ativo' : 'A usar só os servidores públicos gratuitos.', t ? 'ok' : '');
+    netEl(p, 'tOnly').checked = ownOnly();
+    document.querySelector('#net-' + p + ' .tOnlyRow').classList.toggle('hidden', !t);
+    setStatus(netEl(p, 'tStat'), !t ? 'A usar os servidores grátis e o da app.' : ownOnly() ? '✔ A usar o teu servidor (em vez dos da app)' : '✔ O teu servidor fica de reserva (usa primeiro os grátis e o da app)', t ? 'ok' : '');
   });
 }
 async function saveTurn(p) {
@@ -1621,9 +1779,11 @@ async function saveTurn(p) {
   const ok = await testTurn(cfg);
   if (!ok) { setStatus(st, '✖ O servidor não respondeu. Confirma os dados (não foi guardado).', 'err'); return; }
   try { localStorage.setItem('vx-turn', JSON.stringify(cfg)); } catch (e) {}
+  store('vx-turn-only', '1');   // guardaste o teu servidor: passa a ser esse o usado (dá para desligar na caixa)
   renderNet();
   setStatus(st, '✔ Servidor TURN a funcionar e guardado.', 'ok');
 }
+function setTurnOnly(on) { store('vx-turn-only', on ? '1' : '0'); renderNet(); }
 function clearTurn(p) { try { localStorage.removeItem('vx-turn'); } catch (e) {} renderNet(); }
 // Pede ao servidor um endereço de retransmissão ("relay"): se o der, os dados estão certos
 function testTurn(cfg, ms) {
@@ -1709,12 +1869,14 @@ $('mode').value = sMode;
 $('adapt').checked = sAdapt; setAdapt(sAdapt);
 $('latSel').value = latChoice();
 const last = store('tcast-last'); if (last) $('code').value = last;
-{ const sq = store('tcast-q'), sf = store('tcast-fps');
+{ const sq = store('tcast-q'), sf = store('vx-fps');   // chave nova: o padrão passou a 60 fps
   if (sq && QUALITY[sq]) $('quality').value = sq;
   if (sf === '30' || sf === '60') $('fps').value = sf;
   if (params.get('q') && QUALITY[params.get('q')]) $('quality').value = params.get('q'); }
 $('codecSel').value = codecChoice();
 if (params.has('fs')) { $('fsBox').classList.add('hidden'); $('fullBtn').classList.add('hidden'); }
+if (!IN_CAR) { $('fsSteps').classList.add('hidden'); $('fsTip').classList.add('hidden'); }
+else $('fsBtn').href = fsTrickUrl();   // link verdadeiro para o truque do YouTube   // os passos do YouTube só fazem falta no carro
 if (params.has('tesla')) startViewer();
 else if (params.has('pc')) show('sender');
 if (params.get('code')) $('code').value = fmtCode(params.get('code'));
