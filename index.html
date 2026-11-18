@@ -79,6 +79,7 @@
   #diag { position: absolute; left: 14px; bottom: 14px; max-width: 520px; background: rgba(10,14,26,.92); border: 2px solid #3b4566;
     border-radius: 14px; padding: 12px 16px; color: #e8ecf6; font-size: 15px; line-height: 1.55; display: none; }
   #diag.on { display: block; }
+  #diag { pointer-events: none; }   /* só informação: os toques passam para o vídeo/painel por baixo */
   #diag b { color: #fff; }
   #diag .warn { color: #fcd34d; font-weight: 700; }
   #diag .bad { color: #fca5a5; font-weight: 700; }
@@ -96,6 +97,18 @@
   footer.legal a { color: #93c5fd; }
   details.net { width: 100%; max-width: 520px; background: var(--card); border-radius: 16px; padding: 12px 18px; color: var(--muted); font-size: 15px; line-height: 1.5; }
   details.net p { text-align: left; }
+  .relayHelp { margin-top: 14px; text-align: left; font-size: 15px; line-height: 1.5; color: var(--text); background: #111a33; border: 1px solid #3b4a7a; border-radius: 12px; padding: 12px 14px; }
+  .relayHelp ol { margin: 6px 0 6px 20px; padding: 0; }
+  .relayHelp .row { margin-top: 8px; }
+  #waitOv .relayHelp { font-size: 14px; max-width: 640px; margin-left: auto; margin-right: auto; }
+  .hint.path { margin-top: 8px; font-size: 15px; line-height: 1.45; }
+  .hint.path.direct { color: #4ade80; }
+  .hint.path.free { color: #93c5fd; }
+  .hint.path.mine { color: #fbbf24; }
+  #infoBtn.alert { background: #b45309 !important; color: #fff !important; }
+  #pathLbl { font-size: 14px; margin-left: 10px; opacity: .85; }
+  #pathLbl.direct { color: #4ade80; } #pathLbl.free { color: #93c5fd; } #pathLbl.mine { color: #fbbf24; }
+  .relayHelp summary { cursor: pointer; font-weight: 700; }
   label.switch { display: flex; align-items: center; gap: 10px; cursor: pointer; }
   label.switch input { width: 24px; height: 24px; margin: 0; accent-color: var(--green); }
   details.net summary { cursor: pointer; font-weight: 700; color: var(--text); font-size: 16px; }
@@ -202,11 +215,13 @@
     <button class="btn go" id="goBtn" onclick="startSending()"><i data-ic="play"></i> Começar a transmitir</button>
     <button class="btn stop" id="stopBtn" onclick="stopSending()" style="display:none"><i data-ic="stop"></i> Parar</button>
     <div class="status" id="sStatus">À espera</div>
+    <div class="hint path" id="sPath"></div>
     <div class="verify hidden" id="lanBox">
       <div style="color:var(--muted)" id="lanInfo"></div>
       <div style="color:var(--muted)">Se os dois aparelhos estão no <b>mesmo Wi-Fi</b>, carrega aqui. O Chrome pede autorização para o microfone:
         é só para ele deixar o PC mostrar o seu endereço na rede local. <b>O microfone nunca é usado</b> (é desligado logo a seguir).</div>
       <button class="btn go lanBtn" onclick="lanRetry()">Ligação na mesma rede</button>
+      <div id="relayHelpS"></div>
     </div>
   </div>
   <div class="ios hidden" id="iosNote"></div>
@@ -231,8 +246,9 @@
   <div class="overlay" id="unmute" onclick="unmute()"><i data-ic="speaker"></i> Toca aqui para ligar o som</div>
   <div class="bar" id="bar">
     <span id="qInfo">…</span>
+    <span id="pathLbl"></span>
     <button id="qBtn" onclick="toggleQPanel()"><i data-ic="gear"></i> Qualidade</button>
-    <button onclick="toggleDiag()" title="Diagnóstico"><i data-ic="info"></i></button>
+    <button id="infoBtn" onclick="toggleDiag()" title="Diagnóstico"><i data-ic="info"></i></button>
     <button id="fullBtn" onclick="goFull()"><i data-ic="full"></i> Ecrã inteiro</button>
     <button onclick="endView()"><i data-ic="x"></i> Fechar</button>
   </div>
@@ -262,7 +278,7 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
-const APP_VERSION = '4.1';
+const APP_VERSION = '4.4';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
@@ -306,8 +322,11 @@ function turnUrls(text) {
 }
 function iceServers() {
   if (params.has('noice')) return [];
+  // Ordem = preferência. Ligação direta (sem servidor) vem sempre primeiro; entre servidores de
+  // retransmissão, o Chrome prefere os que aparecem primeiro: os GRÁTIS. O teu (com limite de dados) fica
+  // em último, só é usado se os grátis não conseguirem.
   const t = myTurn();
-  return (t ? [t] : []).concat(PUBLIC_ICE, OPEN_RELAY ? [OPEN_RELAY] : []);
+  return PUBLIC_ICE.concat(OPEN_RELAY ? [OPEN_RELAY] : [], t ? [t] : []);
 }
 function rtcConfig() { return { iceServers: iceServers(), bundlePolicy: 'max-bundle' }; }
 
@@ -384,6 +403,8 @@ function richText(t) {
   for (const [k, n] of SYM) h = h.split(k).join(ic(n));
   return h;
 }
+// para HTML já pronto (feito por nós): só troca os símbolos por ícones desenhados
+function svgChecks(html) { let h = String(html); for (const [k, n] of SYM) h = h.split(k).join(ic(n)); return h; }
 document.querySelectorAll('[data-ic]').forEach(e => { e.outerHTML = ic(e.dataset.ic); });
 function show(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
@@ -505,6 +526,78 @@ function netReason(L, R, ever) {
     'Desliga VPNs, experimenta outra rede ou junta um servidor TURN teu.';
 }
 
+/* Explicação que só aparece quando a ligação falha e a retransmissão não ajudou:
+   o VexelCast usa servidores grátis sem conta, que às vezes falham; para funcionar sempre, cria-se uma
+   conta grátis no ExpressTURN e põem-se os dados em "Ligar entre redes diferentes". */
+function relayHelpHtml(side) {
+  const mine = myTurn();
+  const open = side === 's' ? 'openNet(\'s\')' : 'openNet(\'v\')';
+  if (mine) return '<div class="relayHelp"><b>O teu servidor TURN também não ajudou.</b> Abre “Ligar entre redes diferentes” e carrega em ' +
+    '<b>Testar a rede</b>: a linha “O teu servidor TURN” tem de dar ✔. Se der ✖, confirma o endereço, o utilizador e a palavra-passe no painel do ExpressTURN.' +
+    '<div class="row"><button class="btn ghost" onclick="' + open + '">Abrir “Ligar entre redes diferentes”</button></div></div>';
+  return '<details class="relayHelp"><summary>Porque é que não liga e como resolver</summary>Quando os dois aparelhos não se conseguem ligar diretamente ' +
+    '(redes diferentes, dados móveis, hotspot, alguns routers), a imagem tem de passar por um <b>servidor de retransmissão</b>. ' +
+    'O VexelCast usa <b>servidores grátis que não precisam de conta</b> (PeerJS e Open Relay), mas estes <b>às vezes estão em baixo ou bloqueados</b>, e foi o que aconteceu agora.' +
+    '<br><br><b>Para funcionar sempre, em qualquer rede</b> (grátis, uma vez só):' +
+    '<ol><li>Vai a <b>expressturn.com</b> e cria uma conta grátis (<b>Sign Up Free</b>, sem cartão de crédito).</li>' +
+    '<li>No painel da conta, copia o <b>endereço do servidor</b>, o <b>utilizador</b> (username) e a <b>palavra-passe</b> (password).</li>' +
+    (side === 's'
+      ? '<li>Aqui, carrega no botão abaixo, cola os três dados e carrega em <b>Guardar e testar</b>. Tem de aparecer ✔.</li>'
+      : '<li>No <b>PC/telemóvel que transmite</b>, abre “Ligar entre redes diferentes”, cola os três dados e carrega em <b>Guardar e testar</b>. Tem de aparecer ✔. Chega fazer isto lá; aqui não precisas.</li>') +
+    '<li>Volta a ligar. Fica guardado nesse aparelho: não precisas de repetir.</li></ol>' +
+    (side === 's' ? '<div class="row"><button class="btn go" onclick="openNet(\'s\')">Abrir “Ligar entre redes diferentes”</button></div>' : '') + '</details>';
+}
+function openNet(p) {
+  const d = $('net-' + p); if (!d) return;
+  if (p === 'v' && $('player').classList.contains('on')) endView();
+  d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const u = d.querySelector('.tUrl'); if (u) setTimeout(() => u.focus(), 400);
+}
+const relayFailed = (L, R) => !(L.has('relay') || R.has('relay'));
+
+/* Por onde está a passar a ligação (lido das estatísticas do próprio browser, não é estimado):
+   direta, servidor grátis (PeerJS / Open Relay) ou o teu servidor (com limite de dados). */
+function pathFromStats(list) {
+  const by = {}; let pair = null;
+  list.forEach(s => { by[s.id] = s; });
+  list.forEach(s => { if (s.type === 'transport' && s.selectedCandidatePairId && by[s.selectedCandidatePairId]) pair = by[s.selectedCandidatePairId]; });
+  if (!pair) list.forEach(s => { if (!pair && s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s; });
+  if (!pair) return null;
+  const L = by[pair.localCandidateId] || {}, R = by[pair.remoteCandidateId] || {};
+  const out = { kind: 'direct', name: '', mine: false, sent: pair.bytesSent || 0, recv: pair.bytesReceived || 0 };
+  if (L.candidateType === 'relay') {
+    const url = String(L.url || ''), host = (url.match(/^turns?:([^:?]+)/i) || [])[1] || '';
+    const t = myTurn();
+    out.kind = 'relay';
+    if (t && host && [].concat(t.urls).some(u => String(u).includes(host))) { out.mine = true; out.name = host; }
+    else if (/peerjs\.com$/i.test(host)) out.name = 'PeerJS';
+    else if (/openrelay\.metered\.ca$/i.test(host)) out.name = 'Open Relay';
+    else if (host) out.name = host;
+    else out.unknown = true;   // o browser não disse qual: não se assume que é grátis
+  } else if (R.candidateType === 'relay') out.kind = 'relay-remote';
+  return out;
+}
+async function pathInfo(pc) { try { const r = await pc.getStats(); const a = []; r.forEach(s => a.push(s)); return pathFromStats(a); } catch (e) { return null; } }
+function pathText(pi, rateGBh) {
+  if (!pi) return '';
+  if (pi.kind === 'direct') return '✔ Ligação direta entre os aparelhos: sem servidor no meio, grátis e sem limite de dados.';
+  if (pi.kind === 'relay-remote') return 'A passar por um servidor de retransmissão escolhido pelo outro aparelho.';
+  if (pi.unknown) return 'A passar por um servidor de retransmissão (o browser não diz qual).';
+  if (!pi.mine) return 'A passar pelo servidor de retransmissão grátis' + (pi.name ? ' ' + pi.name : '') + ' (sem conta, sem limite teu). Grátis, mas às vezes falha.';
+  return '⚠️ A passar pelo TEU servidor (' + pi.name + '), que tem limite mensal de dados: os grátis não conseguiram. ' +
+    'Nesta transmissão, este aparelho já enviou ' + fmtBytes(pi.sent) + ' por ele' +
+    (rateGBh ? ' (≈ ' + rateGBh.toFixed(rateGBh < 10 ? 1 : 0).replace('.', ',') + ' GB por hora a esta qualidade)' : '') + '. ' +
+    'O que te sobra este mês vê-se no painel do ExpressTURN (a app não consegue ler esse valor com certeza).';
+}
+// etiqueta discreta na barra de cima (sem janelas): por onde está a passar a ligação
+function setPathLabel(pi) {
+  const el = $('pathLbl'); if (!el) return;
+  el.textContent = !pi ? '' : pi.kind === 'direct' ? 'Direta · grátis' : pi.kind === 'relay-remote' ? 'Retransmissão'
+    : pi.unknown ? 'Retransmissão' : pi.mine ? 'Teu servidor · com limite' : 'Servidor grátis';
+  el.className = !pi ? '' : pi.mine ? 'mine' : pi.kind === 'direct' ? 'direct' : 'free';
+}
+function fmtBytes(b) { return b >= 1e9 ? (b / 1e9).toFixed(2).replace('.', ',') + ' GB' : Math.round(b / 1e6) + ' MB'; }
+
 /* Ligação ao servidor de sinalização (protocolo do peerjs-server) */
 class Signal {
   constructor(id, h) { this.id = id; this.token = rnd(12); this.h = h; this.closed = false; this.connect(); }
@@ -575,7 +668,7 @@ function preferInSdp(sdp, want) {
   lines[m] = parts.slice(0, 3).concat(pts.filter(x => list.includes(x)), list.filter(x => !pts.includes(x))).join(' ');
   return lines.join('\r\n');
 }
-function toggleDiag() { vDiagForced = !$('diag').classList.contains('on'); $('diag').classList.toggle('on', vDiagForced); flashBar(); }
+function toggleDiag() { vDiagForced = !$('diag').classList.contains('on'); $('diag').classList.toggle('on', vDiagForced); $('infoBtn').classList.remove('alert'); flashBar(); }
 async function openFullscreen() {
   const el = document.documentElement;
   try { const r = (el.requestFullscreen || el.webkitRequestFullscreen).call(el); if (r && r.then) await r; } catch (e) {}
@@ -588,6 +681,12 @@ function openFullscreenTrick() {
   const target = location.origin + location.pathname + '?tesla&fs=1' + keep;
   location.href = 'https://www.youtube.com/redirect?q=' + encodeURIComponent(target);
 }
+/* Sem janelas a saltar: os avisos ficam no painel (i), e o botão (i) fica amarelo até o abrires. */
+function vNotice(msg) {
+  vDiagMsg = msg; renderDiag(window.__lastDiag || {});
+  const b = $('infoBtn'); if (b && !$('diag').classList.contains('on')) b.classList.add('alert');
+}
+// só para responder a um botão que acabaste de carregar (ex.: ecrã inteiro não deixou)
 function vToast(msg) {
   vDiagMsg = msg; $('diag').classList.add('on'); renderDiag(window.__lastDiag || {});
   setTimeout(() => { if (vDiagMsg === msg) { vDiagMsg = ''; if (!vDiagForced) $('diag').classList.remove('on'); } }, 7000);
@@ -691,7 +790,7 @@ async function viewerMsg(m) {
         }, window.LOST_MS || 60000);
         setTimeout(() => {
           if (pc === vPc && remote.lostAt && !['connected', 'completed'].includes(pc.iceConnectionState)) {
-            $('waitOv').textContent = 'A ligação caiu. A religar…'; $('waitOv').style.display = 'block';
+            $('waitOv').textContent = 'A ligação caiu. A religar…'; $('waitOv').__h = null; $('waitOv').style.display = 'block';
           }
         }, 2500);
       }
@@ -738,8 +837,11 @@ function updateWaitText() {
   const linked = ice === 'connected' || ice === 'completed';
   const slow = vWatch && Date.now() - vWatch.start > 12000;
   let h = linked ? 'A receber a imagem…' : 'A ligar os dois aparelhos…';
-  if (!linked && slow) h += '<div style="margin-top:12px;font-size:.8em;color:#fbbf24">' + richText('⚠️ ' + (r.ever ? '' : 'Ainda não ligou: ') + netReason(r.lk, r.rk, r.ever)) + '</div>';
-  ov.innerHTML = h;
+  if (!linked && slow) {
+    h += '<div style="margin-top:12px;font-size:.8em;color:#fbbf24">' + richText('⚠️ ' + (r.ever ? '' : 'Ainda não ligou: ') + netReason(r.lk, r.rk, r.ever)) + '</div>';
+    if (relayFailed(r.lk, r.rk)) h += svgChecks(relayHelpHtml('v'));
+  }
+  if (ov.__h !== h) { ov.innerHTML = h; ov.__h = h; }   // só redesenha se mudou (não fecha o que abriste)
 }
 /* Num computador/telemóvel (não num carro), o ecrã de destino também mostra o seu endereço local:
    com os dois endereços visíveis, a ligação direta na mesma rede passa sempre (e dá para ver se os
@@ -860,12 +962,30 @@ async function updateInfo() {
   const v = $('video'), now = Date.now(), w = vWatch || {};
   if (!vRemote || !vRemote.accepted) return;
   if (d.ice === 'connected' || d.ice === 'completed') { vRemote.ever = true; if (!w.connectedAt) w.connectedAt = now; }
+  if ((d.ice === 'connected' || d.ice === 'completed') && (!w.pathAt || now - w.pathAt > 3000)) {
+    w.pathAt = now;
+    const remote = vRemote;
+    pathInfo(vPc).then(pi => {
+      if (!pi || remote !== vRemote) return;
+      // se este ecrã liga direto mas o PC usa retransmissão, quem sabe qual é o PC
+      const sp = vQ && vQ.path;
+      const eff = pi.kind === 'relay' ? pi : (sp && sp.kind === 'relay') ? { kind: 'relay', name: sp.name, mine: sp.mine, fromPc: true, sent: 0 } : pi;
+      const txt = eff.kind === 'relay' && eff.fromPc
+        ? (eff.mine ? 'A passar pelo servidor com limite de dados configurado no PC (' + eff.name + '): os grátis não conseguiram.'
+                    : 'A passar pelo servidor de retransmissão grátis' + (eff.name ? ' ' + eff.name : '') + ' (sem conta).')
+        : pathText(eff, 0);
+      const key = eff.kind + '|' + eff.name + '|' + !!eff.mine;
+      remote.pathTxt = txt;
+      // avisa (uma vez, e quando mudar) assim que a imagem aparece
+      if (remote.pathKey !== key) { remote.pathKey = key; setPathLabel(eff); }
+    });
+  }
   updateWaitText();
   if (d.bytes > 0 && !w.bytesAt) w.bytesAt = now;
   // 1) Ligação não passa
   if (!w.connectedAt && now - w.start > 15000 && !w.warnedNet) {
     w.warnedNet = true;
-    vToast('A ligação não está a passar. ' + netReason(vRemote.lk, vRemote.rk, vRemote.ever));
+    vNotice('A ligação não está a passar. ' + netReason(vRemote.lk, vRemote.rk, vRemote.ever));
   }
   // 2) Chegam dados mas nenhuma imagem é descodificada -> este formato não funciona neste ecrã
   if (w.bytesAt && d.frames === 0 && now - w.bytesAt > 5000 && d.bytes > 30000 && !w.decodeFail) {
@@ -884,7 +1004,7 @@ async function updateInfo() {
     w.bad = (dp > 0 && dl / (dl + dp) > 0.05) ? (w.bad || 0) + 1 : 0;
     if (w.bad >= 3 && !w.warnedFixed) {
       w.warnedFixed = true;
-      vToast('A rede não está a aguentar esta qualidade. Liga o “Ajuste automático” (botão Qualidade) ou escolhe uma qualidade mais baixa.');
+      vNotice('A rede não está a aguentar esta qualidade. Liga o “Ajuste automático” (botão Qualidade) ou escolhe uma qualidade mais baixa.');
     }
   }
   w.lastPk = d.pkts; w.lastLost = d.lost;
@@ -895,14 +1015,14 @@ async function updateInfo() {
 function decodeFailed() {
   const bad = vCodec;
   if (codecChoice() !== 'auto') {
-    vToast('A imagem não aparece com ' + CODEC_LABEL[bad] + '. Fecha e, no ecrã do código, escolhe “Automático” ou outro formato.');
+    vNotice('A imagem não aparece com ' + CODEC_LABEL[bad] + '. Fecha e, no ecrã do código, escolhe “Automático” ou outro formato.');
     return;
   }
   if (!vFailed.includes(bad)) vFailed.push(bad);
   if (store('tcast-codec-ok') === bad) store('tcast-codec-ok', '');
   const next = CODECS.find(x => !vFailed.includes(x));
-  if (!next) { vToast('Nenhum formato de vídeo funcionou neste ecrã. Diz-me o que aparece neste painel.'); vFailed = []; return; }
-  vToast('A imagem não aparece com ' + CODEC_LABEL[bad] + '. A tentar com ' + CODEC_LABEL[next] + '…');
+  if (!next) { vNotice('Nenhum formato de vídeo funcionou neste ecrã. Diz-me o que aparece neste painel.'); vFailed = []; return; }
+  vNotice('A imagem não aparece com ' + CODEC_LABEL[bad] + '. A tentar com ' + CODEC_LABEL[next] + '…');
   // pedir ao PC/telemóvel para religar (o ecrã de destino vai responder com o novo formato)
   if (vRemote) vExpect = { src: vRemote.src, until: Date.now() + 30000 };
   if (vSig && vRemote) vSig.send('LEAVE', vRemote.src, { type: 'media', connectionId: vRemote.cid, restart: true, codec: next });
@@ -916,7 +1036,8 @@ function renderDiag(d) {
     '<b>Formato:</b> ' + (d.codec || '-') + (codecChoice() === 'auto' ? ' (automático)' : '') + '<br>' +
     '<b>Imagem:</b> <span class="' + imgCls + '">' + (d.frames > 0 ? d.w + '×' + d.h + ' · ' + d.fps + ' fps' : 'nenhuma ainda') + '</span><br>' +
     '<b>Recebido:</b> ' + ((d.bytes || 0) / 1e6).toFixed(1) + ' MB · ' + (d.frames || 0) + ' imagens mostradas de ' + (d.recv || 0) + ' recebidas' +
-    (vRemote ? '<br><b>Endereços:</b> este ecrã: ' + kindsText(vRemote.lk) + ' · outro aparelho: ' + kindsText(vRemote.rk) : '');
+    (vRemote ? '<br><b>Endereços:</b> este ecrã: ' + kindsText(vRemote.lk) + ' · outro aparelho: ' + kindsText(vRemote.rk) : '') +
+    (vRemote && vRemote.pathTxt ? '<br><b>Caminho:</b> ' + richText(vRemote.pathTxt) : '');
 }
 function playStream(stream) {
   const v = $('video');
@@ -948,7 +1069,7 @@ function goFull() {
 }
 function backToCode(msg) {
   closeViewerPc();
-  vDiagMsg = ''; vDiagForced = false; $('diag').classList.remove('on');
+  vDiagMsg = ''; vDiagForced = false; $('diag').classList.remove('on'); $('infoBtn').classList.remove('alert'); setPathLabel(null);
   $('player').classList.remove('on');
   $('video').srcObject = null;
   vStream = null;
@@ -1021,9 +1142,11 @@ function setAdapt(on, from) {
     (from === 'tesla' ? ' — mudado no ecrã de destino' : ''), 'ok');
 }
 // Renegociar a ligação já confirmada (mesma encriptação) para aplicar um novo limite mínimo de bitrate
-async function renegotiateSender() {
+async function renegotiateSender(tries) {
   const pc = sPc;
-  if (!pc || !sConfirmed || pc.signalingState !== 'stable' || !pc.currentRemoteDescription) return;
+  if (!pc || !sConfirmed || !pc.currentRemoteDescription) return;
+  // outra renegociação ainda a decorrer: tenta outra vez daqui a pouco (em vez de a perder)
+  if (pc.signalingState !== 'stable') { if ((tries || 0) < 8) setTimeout(() => renegotiateSender((tries || 0) + 1), 700); return; }
   try {
     const offer = await pc.createOffer();
     const auth = await authSign(sKeys.key, offerMsg(sCid, offer.sdp));
@@ -1072,7 +1195,28 @@ async function setQuality(q, fps, from) {
 }
 function sendState() {
   if (sCtrl && sCtrl.readyState === 'open')
-    sCtrl.send(JSON.stringify({ t: 'state', q: sCur.q, fps: sCur.fps, mode: sMode, auto: sAdapt, options: Object.keys(QUALITY) }));
+    sCtrl.send(JSON.stringify({ t: 'state', q: sCur.q, fps: sCur.fps, mode: sMode, auto: sAdapt, options: Object.keys(QUALITY),
+      path: sPath ? { kind: sPath.kind, name: sPath.name, mine: sPath.mine } : null }));
+}
+// verifica por onde passa a ligação (de 3 em 3 s) e mostra-o por baixo do estado
+let sPath = null, sPathTimer = null, sPathHist = [];
+function startPathWatch() {
+  clearInterval(sPathTimer); sPath = null; sPathHist = [];
+  sPathTimer = setInterval(async () => {
+    const pc = sPc; if (!pc) { clearInterval(sPathTimer); return; }
+    const pi = await pathInfo(pc);
+    if (!pi || pc !== sPc) return;
+    const now = Date.now();
+    sPathHist.push([now, pi.sent]); while (sPathHist.length > 1 && now - sPathHist[0][0] > 15000) sPathHist.shift();
+    const [t0, b0] = sPathHist[0];
+    const rate = now - t0 > 4000 ? (pi.sent - b0) / ((now - t0) / 1000) * 3600 / 1e9 : 0;
+    const changed = !sPath || sPath.kind !== pi.kind || sPath.name !== pi.name;
+    sPath = pi;
+    $('sPath').innerHTML = richText(pathText(pi, rate));
+    $('sPath').className = 'hint path ' + (pi.mine ? 'mine' : pi.kind === 'direct' ? 'direct' : 'free');
+    if (changed) sendState();
+    window.__sPath = pi;
+  }, window.PATH_MS || 3000);
 }
 
 async function startSending() {
@@ -1159,6 +1303,7 @@ async function makeOffer() {
     if (pc !== sPc) return;
     const s = pc.iceConnectionState;
     if (s === 'connected' || s === 'completed') {
+      if (!sPathTimer || !sPath) startPathWatch();
       sConnected = true; sEver = true; sIceTries = 0; clearTimeout(sIceTimer); sIceTimer = null;
       clearTimeout(sNoPathTimer); $('lanBox').classList.add('hidden');
       if (sConfirmed) { showSending(); setBitrate(pc, brFor(sCur), sCur.fps); }
@@ -1225,6 +1370,8 @@ function showNoPath(stillTrying) {
   setStatus($('sStatus'), (stillTrying ? 'Ainda não ligou (continua a tentar). ' : 'Os aparelhos não se conseguiram ligar. ') + netReason(sLK, sRK, sEver), stillTrying ? 'warn' : 'err');
   $('lanInfo').textContent = 'Endereços — este PC: ' + kindsText(sLK) + ' · outro aparelho: ' + kindsText(sRK);
   $('lanBox').classList.remove('hidden');
+  const rh = relayFailed(sLK, sRK) ? svgChecks(relayHelpHtml('s')) : '';
+  if ($('relayHelpS').__h !== rh) { $('relayHelpS').innerHTML = rh; $('relayHelpS').__h = rh; }
   window.__noPath = netReason(sLK, sRK, sEver);
 }
 /* "Ligação na mesma rede": o Chrome esconde o endereço local do PC (mDNS) a não ser que a página tenha
@@ -1342,6 +1489,7 @@ function stopSending(msg, kind) {
   if (sPc) { try { sPc.close(); } catch (e) {} sPc = null; }
   sCtrl = null; sConfirmed = false; clearTimeout(sIceTimer); sIceTimer = null; sIceTries = 0;
   clearTimeout(sNoPathTimer); $('lanBox').classList.add('hidden');
+  clearInterval(sPathTimer); sPathTimer = null; sPath = null; $('sPath').textContent = '';
   if (sSig) { sSig.close(); sSig = null; }
   if (sStream) { sStream.getTracks().forEach(t => t.stop()); sStream = null; }
   sPending = []; sConnected = false;
