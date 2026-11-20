@@ -129,6 +129,10 @@
   details.net summary { cursor: pointer; font-weight: 700; color: var(--text); font-size: 16px; }
   details.net input { font-size: 17px; padding: 9px 12px; margin: 4px 0 8px; }
   details.net label { font-size: 14px; display: block; }
+  .seg { display: flex; gap: 8px; margin: 6px 0 10px; }
+  .seg button { flex: 1; padding: 10px 8px; border-radius: 10px; border: 2px solid #2a3350; background: transparent; color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; line-height: 1.25; }
+  .seg button small { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .seg button.sel { border-color: var(--blue); background: rgba(59,130,246,.18); }
   details.net label.tOnlyRow { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 10px; font-size: 15px; line-height: 1.45; }
   details.net label.tOnlyRow.hidden { display: none; }
   details.net .tOnlyRow input { width: auto; margin: 4px 0 0; padding: 0; transform: scale(1.4); flex: none; }
@@ -196,6 +200,7 @@
       <option value="vp8">VP8</option>
       <option value="h264">H.264</option>
       <option value="vp9">VP9</option>
+      <option value="av1">AV1 (só com placa gráfica recente)</option>
     </select>
   </div>
   <div class="vset">
@@ -241,6 +246,11 @@
       <option value="motion">Vídeos, filmes e jogos (mais fluido)</option>
       <option value="detail">Texto, slides e documentos (mais nítido)</option>
     </select>
+    <label for="dataSel">Gasto de dados</label>
+    <select id="dataSel" onchange="setDataSave(this.value === 'save')">
+      <option value="best">Melhor imagem (recomendado)</option>
+      <option value="save">Poupar dados (dados móveis / hotspot)</option>
+    </select>
     <label class="switch"><input type="checkbox" id="adapt" checked onchange="setAdapt(this.checked, 'pc')"> Ajuste automático à rede</label>
     <div class="hint" id="adaptHint"></div>
     </details>
@@ -260,6 +270,7 @@
   </div>
   <div class="ios hidden" id="iosNote"></div>
   <video id="preview" muted playsinline></video>
+  <p class="hint hidden" id="pvNote">Pré-visualização em pausa para poupar o computador (a transmissão continua ao vivo). <a href="#" onclick="resumePreview(); return false">Ver ao vivo</a></p>
   <div class="netph" data-p="s"></div>
   <div class="tips">
     <b>Dica 1:</b> para ver um vídeo do browser, escolhe <b>“Separador do Chrome/Edge”</b> e deixa ligado
@@ -312,7 +323,7 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
-const APP_VERSION = '5.1';
+const APP_VERSION = '5.4';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
@@ -382,7 +393,8 @@ function turnUrls(text) {
 }
 // "Usar só o meu servidor": com um TURN próprio guardado, não usar a retransmissão da app nem as grátis
 // (a ligação direta continua a ser tentada primeiro: é a melhor e não gasta servidor nenhum).
-function ownOnly() { return !!myTurn() && store('vx-turn-only') !== '0'; }
+function turnPref() { const v = store('vx-turn-only'); return v === '1' ? 'mine' : v === '0' ? 'app' : (myTurn() ? 'mine' : 'app'); }
+function ownOnly() { return !!myTurn() && turnPref() === 'mine'; }
 function dropRelayCand(c) { return / typ relay( |$)/.test((c && c.candidate) || ''); }
 function iceServers(onlyMine) {
   if (params.has('noice')) return [];
@@ -495,7 +507,7 @@ function randCode() {
   let used = []; try { used = JSON.parse(localStorage.getItem('vx-used') || '[]'); } catch (e) {}
   let c;
   do {
-    c = ''; for (const x of crypto.getRandomValues(new Uint8Array(8))) c += CODE_ABC[x % CODE_ABC.length];
+    c = ''; while (c.length < 8) for (const x of crypto.getRandomValues(new Uint8Array(16))) { if (x < 248 && c.length < 8) c += CODE_ABC[x % 31]; }   // 248 = 8×31: todas as letras com a mesma probabilidade
   } while (used.includes(c));
   used.push(c); if (used.length > 500) used = used.slice(-500);
   try { localStorage.setItem('vx-used', JSON.stringify(used)); } catch (e) {}
@@ -580,29 +592,29 @@ function netReason(L, R, ever) {
       'Para testar: liga os dois ao hotspot do telemóvel.';
   if (ever)
     return 'Os dois aparelhos chegaram a ligar-se, mas a ligação foi cortada' + (relay ? '' : ' e as retransmissões grátis não responderam') + '. ' +
-      (onlyMdns(L) ? 'Este aparelho ainda esconde o endereço local: carrega em “Ligação na mesma rede” também aqui (em “Ligar entre redes diferentes”). ' : '') +
+      (onlyMdns(L) ? 'Este aparelho ainda esconde o endereço local: carrega em “Ligação na mesma rede” também aqui (em “Servidor de ligação”). ' : '') +
       'Confirma que os dois estão ligados ao MESMO router (não a um repetidor/mesh/segundo router) e que no Windows a rede está como “Privada”. Para testar: liga os dois ao hotspot do telemóvel.';
   if (onlyMdns(L) && onlyMdns(R))
     return 'Os dois browsers esconderam o endereço na rede local (mDNS) e o router não deixou descobri-lo' +
       (relay ? '' : ', e os servidores de retransmissão gratuitos não responderam') +
-      '. Solução: carrega em “Ligação na mesma rede” no aparelho que envia (e, se o ecrã de destino for um computador, também lá, em “Ligar entre redes diferentes”).';
+      '. Solução: carrega em “Ligação na mesma rede” no aparelho que envia (e, se o ecrã de destino for um computador, também lá, em “Servidor de ligação”).';
   if (!relay)
     return 'Não há caminho direto entre os aparelhos e os servidores de retransmissão gratuitos não responderam nesta rede. ' +
       'Se estão no mesmo Wi-Fi, o router pode estar a isolar os aparelhos (rede de convidados ou “isolamento de clientes”). ' +
-      'Solução: junta um servidor TURN teu em “Ligar entre redes diferentes”, ou usa outra rede.';
+      'Solução: junta um servidor TURN teu em “Servidor de ligação”, ou usa outra rede.';
   return 'Nem o caminho direto nem a retransmissão passaram: um router, firewall ou VPN está a bloquear. ' +
     'Desliga VPNs, experimenta outra rede ou junta um servidor TURN teu.';
 }
 
 /* Explicação que só aparece quando a ligação falha e a retransmissão não ajudou:
    o VexelCast usa servidores grátis sem conta, que às vezes falham; para funcionar sempre, cria-se uma
-   conta grátis no ExpressTURN e põem-se os dados em "Ligar entre redes diferentes". */
+   conta grátis no ExpressTURN e põem-se os dados em "Servidor de ligação". */
 function relayHelpHtml(side) {
   const mine = myTurn();
   const open = side === 's' ? 'openNet(\'s\')' : 'openNet(\'v\')';
-  if (mine) return '<div class="relayHelp"><b>O teu servidor TURN também não ajudou.</b> Abre “Ligar entre redes diferentes” e carrega em ' +
+  if (mine) return '<div class="relayHelp"><b>O teu servidor TURN também não ajudou.</b> Abre “Servidor de ligação” e carrega em ' +
     '<b>Testar a rede</b>: a linha “O teu servidor TURN” tem de dar ✔. Se der ✖, confirma o endereço, o utilizador e a palavra-passe no painel do ExpressTURN.' +
-    '<div class="row"><button class="btn ghost" onclick="' + open + '">Abrir “Ligar entre redes diferentes”</button></div></div>';
+    '<div class="row"><button class="btn ghost" onclick="' + open + '">Abrir “Servidor de ligação”</button></div></div>';
   return '<details class="relayHelp"><summary>Porque é que não liga e como resolver</summary>Quando os dois aparelhos não se conseguem ligar diretamente ' +
     '(redes diferentes, dados móveis, hotspot, alguns routers), a imagem tem de passar por um <b>servidor de retransmissão</b>. ' +
     'O VexelCast usa <b>servidores grátis que não precisam de conta</b> (PeerJS e Open Relay' + (APP_RELAY || APP_TURN_ON ? ', e o servidor da app' : '') + '), mas estes <b>às vezes estão em baixo ou bloqueados</b>, e foi o que aconteceu agora.' +
@@ -611,13 +623,14 @@ function relayHelpHtml(side) {
     '<li>No painel da conta, copia o <b>endereço do servidor</b>, o <b>utilizador</b> (username) e a <b>palavra-passe</b> (password).</li>' +
     (side === 's'
       ? '<li>Aqui, carrega no botão abaixo, cola os três dados e carrega em <b>Guardar e testar</b>. Tem de aparecer ✔.</li>'
-      : '<li>No <b>aparelho que envia a imagem</b>, abre “Ligar entre redes diferentes”, cola os três dados e carrega em <b>Guardar e testar</b>. Tem de aparecer ✔. Chega fazer isto lá; aqui não precisas.</li>') +
+      : '<li>No <b>aparelho que envia a imagem</b>, abre “Servidor de ligação”, cola os três dados e carrega em <b>Guardar e testar</b>. Tem de aparecer ✔. Chega fazer isto lá; aqui não precisas.</li>') +
     '<li>Volta a ligar. Fica guardado nesse aparelho: não precisas de repetir.</li></ol>' +
-    (side === 's' ? '<div class="row"><button class="btn go" onclick="openNet(\'s\')">Abrir “Ligar entre redes diferentes”</button></div>' : '') + '</details>';
+    (side === 's' ? '<div class="row"><button class="btn go" onclick="openNet(\'s\')">Abrir “Servidor de ligação”</button></div>' : '') + '</details>';
 }
 function openNet(p) {
   const d = $('net-' + p); if (!d) return;
   if (p === 'v' && $('player').classList.contains('on')) endView();
+  if (!myTurn()) setTurnOnly(true);   // vais configurar o teu servidor: mostra os campos
   d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const u = d.querySelector('.tUrl'); if (u) setTimeout(() => u.focus(), 400);
 }
@@ -654,7 +667,7 @@ function pathText(pi, rateGBh) {
   if (pi.unknown) return 'A passar por um servidor de retransmissão (o browser não diz qual).';
   if (pi.app) return 'A passar pelo servidor de retransmissão da app. Grátis para ti, sem conta.';
   if (!pi.mine) return 'A passar pelo servidor de retransmissão grátis' + (pi.name ? ' ' + pi.name : '') + ' (sem conta, sem limite teu). Grátis, mas às vezes falha.';
-  return '⚠️ A passar pelo TEU servidor (' + pi.name + '), que tem limite mensal de dados: os grátis não conseguiram. ' +
+  return '⚠️ A passar pelo TEU servidor (' + pi.name + '), que tem limite mensal de dados' + (ownOnly() ? ' (escolheste usar o teu)' : ': os grátis não conseguiram') + '. ' +
     'Nesta transmissão, este aparelho já enviou ' + fmtBytes(pi.sent) + ' por ele' +
     (rateGBh ? ' (≈ ' + rateGBh.toFixed(rateGBh < 10 ? 1 : 0).replace('.', ',') + ' GB por hora a esta qualidade)' : '') + '. ' +
     'O que te sobra este mês vê-se no painel do ExpressTURN (a app não consegue ler esse valor com certeza).';
@@ -699,8 +712,8 @@ const Q_LABEL = { 360: '360p', 540: '540p', 720: '720p', 1080: '1080p', max: 'M�
 /* --- Formato de vídeo (codec): quem escolhe é o ecrã de destino, porque é ele que tem de o descodificar.
    Algumas versões do software dos carros Tesla não mostram H.264 por WebRTC (ecrã preto), por isso o
    "Automático" começa em VP8 e, se não aparecer imagem, troca sozinho para o seguinte. --- */
-const CODECS = ['vp8', 'h264', 'vp9'];
-const CODEC_LABEL = { auto: 'Automático', vp8: 'VP8', h264: 'H.264', vp9: 'VP9' };
+const CODECS = ['vp8', 'h264', 'vp9', 'av1'];
+const CODEC_LABEL = { auto: 'Automático', vp8: 'VP8', h264: 'H.264', vp9: 'VP9', av1: 'AV1' };
 let vCodec = null, vFailed = [], vWatch = null, vDiagForced = false, vDiagMsg = '', vExpect = null, vAskTimer = null;
 function codecChoice() { const c = store('tcast-codec'); return CODECS.includes(c) ? c : 'auto'; }
 /* "Automático": escolhe o formato que dá a mesma imagem com MENOS dados e que este ecrã descodifica bem
@@ -710,21 +723,27 @@ let vAutoOrder = CODECS.slice();
 const vAutoReady = (async () => {
   try {
     if (!navigator.mediaCapabilities || !navigator.mediaCapabilities.decodingInfo) return;
-    const mime = { vp9: 'video/VP9', h264: 'video/H264', vp8: 'video/VP8' };
-    const eff = ['vp9', 'h264', 'vp8'];
+    const mime = { av1: 'video/AV1', vp9: 'video/VP9', h264: 'video/H264', vp8: 'video/VP8' };
+    const eff = ['av1', 'vp9', 'h264', 'vp8'];
     const tiers = await Promise.all(eff.map(async c => {
       try {
         const r = await Promise.race([navigator.mediaCapabilities.decodingInfo({ type: 'webrtc',
           video: { contentType: mime[c], width: 1920, height: 1080, bitrate: 6000000, framerate: 60 } }), new Promise(res => setTimeout(() => res(null), 1500))]);
         if (!r) return 9;
-        return !r.supported ? 3 : r.powerEfficient && r.smooth ? 0 : r.smooth ? 1 : 2;
+        const t = !r.supported ? 3 : r.powerEfficient && r.smooth ? 0 : r.smooth ? 1 : 2;
+        return c === 'av1' && t !== 0 ? 8 : t;   // AV1 só com descodificação pela placa gráfica (sem ela pode dar soluços)
       } catch (e) { return 9; }
     }));
     if (tiers.every(t => t === 9)) return;   // o browser não sabe dizer: fica a ordem antiga (já testada)
     vAutoOrder = eff.map((c, i) => [c, tiers[i], i]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(x => x[0]);
+    if (IN_CAR && store('tcast-codec-ok') !== 'h264') vAutoOrder = vAutoOrder.filter(x => x !== 'h264').concat('h264');
   } catch (e) {}
 })();
-function codecBad() { try { return JSON.parse(store('vx-codec-bad') || '[]'); } catch (e) { return []; } }
+const BAD_DAYS = 7;
+function codecBadMap() {
+  try { const v = JSON.parse(store('vx-codec-bad') || '{}'); return Array.isArray(v) ? {} : v; } catch (e) { return {}; }
+}
+function codecBad() { const m = codecBadMap(), now = Date.now(); return Object.keys(m).filter(k => now - m[k] < BAD_DAYS * 864e5); }
 function codecToUse() {
   const c = codecChoice();
   if (c !== 'auto') return c;
@@ -732,15 +751,19 @@ function codecToUse() {
   return vAutoOrder.find(x => !vFailed.includes(x) && !bad.includes(x)) || vAutoOrder.find(x => !vFailed.includes(x)) || 'vp8';
 }
 function onCodecSel() { store('tcast-codec', $('codecSel').value); vFailed = []; store('vx-codec-bad', ''); }
-const CODEC_RE = { vp8: /VP8/i, h264: /H264/i, vp9: /VP9/i };
+const CODEC_RE = { vp8: /VP8/i, h264: /H264/i, vp9: /VP9/i, av1: /AV1/i };
 function applyCodecPref(pc, want) {
   try {
     const caps = RTCRtpReceiver.getCapabilities && RTCRtpReceiver.getCapabilities('video');
     if (!caps) return;
     const re = CODEC_RE[want];
-    const first = caps.codecs.filter(c => re.test(c.mimeType));
-    if (!first.length) return;
-    const order = first.concat(caps.codecs.filter(c => !re.test(c.mimeType)));
+    if (!caps.codecs.some(c => re.test(c.mimeType))) return;
+    // o pedido primeiro, depois os outros pela ordem do "Automático" (do mais eficiente para o menos)
+    const keys = [want].concat(vAutoOrder.filter(x => x !== want), CODECS.filter(x => x !== want && !vAutoOrder.includes(x)));
+    const prof = c => { const m = /profile-level-id=(..)/.exec(c.sdpFmtpLine || ''); return !m ? 1 : m[1] === '64' ? 0 : m[1] === '4d' ? 1 : 2; };   // H.264 High primeiro (~10% menos dados)
+    let order = [];
+    keys.forEach(k => { order = order.concat(caps.codecs.filter(c => CODEC_RE[k].test(c.mimeType)).sort((a, b) => k === 'h264' ? prof(a) - prof(b) : 0)); });
+    order = order.concat(caps.codecs.filter(c => !order.includes(c)));
     pc.getTransceivers().forEach(t => {
       if (t.receiver && t.receiver.track && t.receiver.track.kind === 'video' && t.setCodecPreferences) t.setCodecPreferences(order);
     });
@@ -751,7 +774,7 @@ function preferInSdp(sdp, want) {
   const lines = sdp.split('\r\n');
   const m = lines.findIndex(l => l.startsWith('m=video '));
   if (m < 0) return sdp;
-  const name = { vp8: 'VP8', h264: 'H264', vp9: 'VP9' }[want];
+  const name = { vp8: 'VP8', h264: 'H264', vp9: 'VP9', av1: 'AV1' }[want];
   const pts = lines.map(l => (l.match(new RegExp('^a=rtpmap:(\\d+) ' + name + '/90000')) || [])[1]).filter(Boolean);
   if (!pts.length) return sdp;
   const parts = lines[m].split(' ');
@@ -759,7 +782,7 @@ function preferInSdp(sdp, want) {
   lines[m] = parts.slice(0, 3).concat(pts.filter(x => list.includes(x)), list.filter(x => !pts.includes(x))).join(' ');
   return lines.join('\r\n');
 }
-function toggleDiag() { vDiagForced = !$('diag').classList.contains('on'); $('diag').classList.toggle('on', vDiagForced); $('infoBtn').classList.remove('alert'); flashBar(); }
+function toggleDiag() { vDiagForced = !$('diag').classList.contains('on'); if (vDiagForced) renderDiag(window.__lastDiag || {}); $('diag').classList.toggle('on', vDiagForced); $('infoBtn').classList.remove('alert'); flashBar(); }
 function fsTrickUrl() {
   const keep = ['server', 'noice'].filter(k => params.has(k)).map(k => '&' + k + (params.get(k) ? '=' + encodeURIComponent(params.get(k)) : '')).join('');
   return 'https://www.youtube.com/redirect?q=' + encodeURIComponent(location.origin + location.pathname + '?tesla&fs=1' + keep);
@@ -798,7 +821,7 @@ function vToast(msg) {
   setTimeout(() => { if (vDiagMsg === msg) { vDiagMsg = ''; if (!vDiagForced) $('diag').classList.remove('on'); } }, 7000);
 }
 
-let vKeys = null, vBad = 0, vStartTok = 0, vNote = '';
+let vKeys = null, vBad = 0, vStartTok = 0, vNote = '', vMsgChain = Promise.resolve();
 async function startViewer(forceNew) {
   show('viewer');
   const tok = ++vStartTok;
@@ -817,7 +840,7 @@ async function startViewer(forceNew) {
     open: () => { if (!vPc) setStatus($('vStatus'), (vNote ? vNote + ' ' : '') + 'Pronto ✔ À espera do aparelho que envia…', 'ok'); vNote = ''; },
     lost: () => { if (!vPc) setStatus($('vStatus'), 'Sem ligação ao servidor, a tentar outra vez… (o carro tem internet?)', 'warn'); },
     error: t => { if (t === 'id-taken') startViewer(true); else setStatus($('vStatus'), 'Erro do servidor. Recarrega a página.', 'err'); },
-    message: m => viewerMsg(m)
+    message: m => { vMsgChain = vMsgChain.then(() => viewerMsg(m)).catch(e => console.warn('msg', e)); }
   });
 }
 function newCode() { startViewer(true); }
@@ -828,7 +851,7 @@ async function viewerMsg(m) {
     // 1) Só quem sabe o código consegue assinar a oferta. O resto é ignorado em silêncio.
     const keys = vKeys;
     if (!keys || !p.sdp || !p.sdp.sdp || !(await authCheck(keys.key, offerMsg(p.connectionId, p.sdp.sdp), p.auth))) {
-      if (keys && ++vBad >= 5) { vNote = 'Houve várias tentativas com o código errado: código trocado por segurança.'; newCode(); }
+      if (keys && ++vBad >= 5 && !vPc) { vNote = 'Houve várias tentativas com o código errado: código trocado por segurança.'; newCode(); }
       return;
     }
     if (keys !== vKeys) return;
@@ -1000,8 +1023,11 @@ async function renegotiate(sdp) {
 const LAT = { low: 0, mid: 150, smooth: 400 };
 const LAT_LABEL = { low: 'Mínimo', mid: 'Equilibrado', smooth: 'Estável' };
 function latChoice() { const l = store('vx-lat'); return LAT[l] !== undefined ? l : 'low'; }
+/* Anti-soluços: se a imagem congelar algumas vezes, o ecrã guarda um pouco mais de imagem (até +160 ms).
+   Quando a rede fica estável durante um minuto, volta a baixar sozinho para o atraso mínimo. */
+let vJbBoost = 0;
 function applyLatency(pc) {
-  const ms = LAT[latChoice()];
+  const ms = LAT[latChoice()] + vJbBoost;
   (pc || vPc) && (pc || vPc).getReceivers().forEach(r => {
     try {
       if ('jitterBufferTarget' in r) r.jitterBufferTarget = ms;
@@ -1019,7 +1045,7 @@ function closeViewerPc() {
   if (vPc) { try { vPc.close(); } catch (e) {} }
   $('waitOv').style.display = 'none';
   vWatch = null;
-  vPc = null; vRemote = null; vPending = []; vCtrl = null; vQ = null;
+  vPc = null; vRemote = null; vPending = []; vCtrl = null; vQ = null; vJbBoost = 0;
   $('qPanel').classList.remove('on');
   clearInterval(vInfoTimer); vInfoTimer = null;
 }
@@ -1068,7 +1094,7 @@ async function updateInfo() {
       if (s.type === 'inbound-rtp' && s.kind === 'video') {
         d.bytes = s.bytesReceived || 0; d.frames = s.framesDecoded || 0; d.recv = s.framesReceived || 0;
         d.w = s.frameWidth || 0; d.h = s.frameHeight || 0; d.fps = Math.round(s.framesPerSecond || 0);
-        d.lost = s.packetsLost || 0; d.pkts = s.packetsReceived || 0;
+        d.lost = s.packetsLost || 0; d.pkts = s.packetsReceived || 0; d.freeze = s.freezeCount || 0;
         if (s.codecId && byId[s.codecId]) d.codec = byId[s.codecId].mimeType.replace('video/', '');
       }
       if (s.type === 'candidate-pair' && (s.nominated || s.selected) && s.state === 'succeeded') {
@@ -1093,7 +1119,7 @@ async function updateInfo() {
       const sp = vQ && vQ.path;
       const eff = pi.kind === 'relay' ? pi : (sp && sp.kind === 'relay') ? { kind: 'relay', name: sp.name, mine: sp.mine, fromPc: true, sent: 0 } : pi;
       const txt = eff.kind === 'relay' && eff.fromPc
-        ? (eff.mine ? 'A passar pelo servidor com limite de dados configurado no aparelho que envia (' + eff.name + '): os grátis não conseguiram.'
+        ? (eff.mine ? 'A passar pelo servidor com limite de dados configurado no aparelho que envia (' + eff.name + ').'
                     : 'A passar pelo servidor de retransmissão grátis' + (eff.name ? ' ' + eff.name : '') + ' (sem conta).')
         : pathText(eff, 0);
       const key = eff.kind + '|' + eff.name + '|' + !!eff.mine;
@@ -1120,6 +1146,14 @@ async function updateInfo() {
     setStatus($('vStatus'), 'Ligado ✔', 'ok');
     if (v.srcObject && v.srcObject.getAudioTracks().length && v.muted) { $('unmute').innerHTML = richText('🔊 Toca aqui para ligar o som'); $('unmute').style.display = 'block'; }
   }
+  // 4) Anti-soluços
+  if (w.framesAt && d.freeze !== undefined) {
+    if (w.lastFreeze !== undefined && d.freeze > w.lastFreeze) {
+      w.freezes = (w.freezes || []).filter(t => now - t < 20000); w.freezes.push(now); w.calmSince = now;
+      if (w.freezes.length >= 2 && vJbBoost < 160) { vJbBoost = Math.min(160, vJbBoost + 40); w.freezes = []; applyLatency(); }
+    } else if (vJbBoost > 0 && now - (w.calmSince || w.framesAt) > 60000) { vJbBoost = Math.max(0, vJbBoost - 40); w.calmSince = now; applyLatency(); }
+    w.lastFreeze = d.freeze;
+  }
   // 5) Ajuste automático desligado e a rede não aguenta (perde > 5% dos pacotes durante 3 s): avisar
   if (vQ && vQ.auto === false && w.lastPk !== undefined) {
     const dl = d.lost - w.lastLost, dp = d.pkts - w.lastPk;
@@ -1132,17 +1166,18 @@ async function updateInfo() {
   w.lastPk = d.pkts; w.lastLost = d.lost;
   // 4) Imagem a chegar mas o vídeo está parado (autoplay bloqueado)
   if (d.frames > 0 && v.paused) { $('unmute').innerHTML = richText('▶ Toca aqui para ver'); $('unmute').style.display = 'block'; }
-  renderDiag(d);
+  if ($('diag').classList.contains('on') || vDiagMsg) renderDiag(d);
 }
 function decodeFailed() {
-  const bad = vCodec;
+  const real = ((window.__lastDiag && window.__lastDiag.codec) || '').toLowerCase().replace('h.264', 'h264');
+  const bad = CODECS.includes(real) ? real : vCodec;
   if (codecChoice() !== 'auto') {
     vNotice('A imagem não aparece com ' + CODEC_LABEL[bad] + '. Fecha e, no ecrã do código, escolhe “Automático” ou outro formato.');
     return;
   }
   if (!vFailed.includes(bad)) vFailed.push(bad);
   if (store('tcast-codec-ok') === bad) store('tcast-codec-ok', '');
-  { const b = codecBad(); if (!b.includes(bad)) { b.push(bad); store('vx-codec-bad', JSON.stringify(b)); } }
+  { const b = codecBadMap(); b[bad] = Date.now(); store('vx-codec-bad', JSON.stringify(b)); }
   const next = vAutoOrder.find(x => !vFailed.includes(x));
   if (!next) { vNotice('Nenhum formato de vídeo funcionou neste ecrã. Diz-me o que aparece neste painel.'); vFailed = []; return; }
   vNotice('A imagem não aparece com ' + CODEC_LABEL[bad] + '. A tentar com ' + CODEC_LABEL[next] + '…');
@@ -1237,12 +1272,19 @@ let sLK = new Set(), sRK = new Set(), sEver = false, sNoPathTimer = null, sAccep
    chegar muito depressa, tem de esperar que o registo acabe; senão era deitada fora e a ligação ficava presa. */
 let sLocalPending = null;
 function setLocal(pc, offer) { const p = pc.setLocalDescription(offer); sLocalPending = p.catch(() => {}); return p; }
+function pausePreview() {
+  const pv = $('preview'); if (!pv || !sStream) return;
+  pv.pause(); $('pvNote').classList.remove('hidden');
+}
+function resumePreview() { const pv = $('preview'); $('pvNote').classList.add('hidden'); pv.play().catch(() => {}); }
 function showSending() {
   const hasAudio = sStream && sStream.getAudioTracks().length > 0;
   const vt = sStream && sStream.getVideoTracks()[0], st = vt ? vt.getSettings() : {};
   setStatus($('sStatus'), '✔ A transmitir para o ecrã' + (hasAudio ? ' (com som)' : ' (sem som — marca a opção de áudio)') +
     ' · ' + Q_LABEL[sCur.q] + ' ' + sCur.fps + ' fps' + (sRestart ? ' · formato mudado pelo ecrã para ' + sRestart : ''), hasAudio ? 'ok' : 'warn');
+  if (!sPvShown) { sPvShown = true; pausePreview(); }
 }
+let sPvShown = false;
 // a resposta do ecrã foi verificada (assinatura certa): a ligação está confirmada
 async function confirmed() {
   if (!sPc) return;
@@ -1332,8 +1374,13 @@ function fitInfo(track) {
   }
   return { w, h, scale };
 }
+let sSave = store('vx-data') === 'save';
+function setDataSave(on) {
+  sSave = !!on; store('vx-data', sSave ? 'save' : 'best'); if ($('dataSel')) $('dataSel').value = sSave ? 'save' : 'best';
+  if (sPc) setBitrate(sPc);
+}
 function brEff(cur) {
-  let f = CODEC_EFF[sCodec] || 1;
+  let f = (CODEC_EFF[sCodec] || 1) * (sSave ? 0.55 : 1);   // Poupar dados: ~45% menos (a imagem fica um pouco mais suave)
   const vt = sStream && sStream.getVideoTracks()[0], fit = fitInfo(vt);
   if (fit.w && fit.h) {
     const nh = QUALITY[cur.q].h, nom = nh * nh * 16 / 9, enc = (fit.w / fit.scale) * (fit.h / fit.scale);
@@ -1401,9 +1448,27 @@ function startPathWatch() {
     $('sPath').className = 'hint path ' + (pi.mine ? 'mine' : pi.kind === 'direct' ? 'direct' : 'free');
     if (changed) sendState();
     window.__sPath = pi;
+    cpuWatch(pc);
   }, window.PATH_MS || 3000);
 }
 
+/* Se o processador deste aparelho não aguentar o VP9/AV1 (o browser começa a baixar a imagem por falta de CPU),
+   passa sozinho para um formato mais leve, sem desligar, e lembra-se disso neste aparelho. */
+let sCpuBad = 0;
+async function cpuWatch(pc) {
+  if (!/^(VP9|AV1)$/.test(sCodec) || !sConfirmed) { sCpuBad = 0; return; }
+  let q = '';
+  try { (await pc.getStats()).forEach(x => { if (x.type === 'outbound-rtp' && x.kind === 'video') q = x.qualityLimitationReason; }); } catch (e) { return; }
+  if (pc !== sPc) return;
+  sCpuBad = q === 'cpu' ? sCpuBad + 1 : 0;
+  if (sCpuBad < (window.CPU_TICKS || 3)) return;
+  sCpuBad = 0; store('vx-enc-light', '1'); window.__cpuFallback = sCodec;
+  try {
+    const caps = RTCRtpReceiver.getCapabilities('video').codecs.filter(c => !/vp9|av1/i.test(c.mimeType));
+    pc.getTransceivers().forEach(t => { if (t.sender && t.sender.track && t.sender.track.kind === 'video' && t.setCodecPreferences) t.setCodecPreferences(caps); });
+  } catch (e) { return; }
+  renegotiateSender();
+}
 async function startSending() {
   const code = normCode($('code').value);
   if (!CODE_RE.test(code)) { setStatus($('sStatus'), 'O código tem 8 letras e números, como aparece no ecrã de destino (ex.: K7P3-X9QM).', 'err'); return; }
@@ -1459,30 +1524,39 @@ async function startSending() {
   });
 }
 
-/* Se este computador não conseguir codificar VP9 com fluidez, não o oferece (evita soluços por falta de CPU). */
-const sVp9Enc = (async () => {
-  try {
-    if (!navigator.mediaCapabilities || !navigator.mediaCapabilities.encodingInfo) return null;
-    return await Promise.race([navigator.mediaCapabilities.encodingInfo({ type: 'webrtc',
-      video: { contentType: 'video/VP9', width: 1920, height: 1080, bitrate: 6000000, framerate: 60 } }), new Promise(r => setTimeout(() => r(null), 1500))]);
-  } catch (e) { return null; }
-})();
+/* Não oferecer formatos que este aparelho não codifica com fluidez (evita soluços por falta de CPU):
+   VP9 só se o browser disser que dá; AV1 só com codificação pela placa gráfica. */
+function encInfo(mime) {
+  return (async () => {
+    try {
+      if (!navigator.mediaCapabilities || !navigator.mediaCapabilities.encodingInfo) return null;
+      return await Promise.race([navigator.mediaCapabilities.encodingInfo({ type: 'webrtc',
+        video: { contentType: mime, width: 1920, height: 1080, bitrate: 6000000, framerate: 60 } }), new Promise(r => setTimeout(() => r(null), 1500))]);
+    } catch (e) { return null; }
+  })();
+}
+const sVp9Enc = encInfo('video/VP9'), sAv1Enc = encInfo('video/AV1');
 async function dropVp9IfSlow(pc) {
-  const e = await Promise.race([sVp9Enc, new Promise(r => setTimeout(() => r(null), 1500))]);
-  if (!e || (e.supported !== false && e.smooth !== false)) return;
+  const wait = x => Promise.race([x, new Promise(r => setTimeout(() => r(null), 1500))]);
+  const e9 = await wait(sVp9Enc), e1 = await wait(sAv1Enc);
+  const drop = [];
+  if (e9 && (e9.supported === false || e9.smooth === false)) drop.push(/vp9/i);
+  if (!(e1 && e1.supported && e1.smooth && e1.powerEfficient)) drop.push(/av1/i);
+  if (store('vx-enc-light') === '1' && !drop.some(re => re.test('VP9'))) drop.push(/vp9/i);   // já se viu que este aparelho não aguenta
+  if (!drop.length) return;
   try {
     const caps = RTCRtpReceiver.getCapabilities && RTCRtpReceiver.getCapabilities('video');
-    const keep = caps && caps.codecs.filter(c => !/vp9/i.test(c.mimeType));
+    const keep = caps && caps.codecs.filter(c => !drop.some(re => re.test(c.mimeType)));
     if (!keep || !keep.some(c => /vp8|h264|av1/i.test(c.mimeType))) return;
     pc.getTransceivers().forEach(t => { if (t.sender && t.sender.track && t.sender.track.kind === 'video' && t.setCodecPreferences) t.setCodecPreferences(keep); });
-    window.__vp9Dropped = true;
+    window.__vp9Dropped = drop.some(re => re.test('VP9')); window.__av1Dropped = drop.some(re => re.test('AV1'));
   } catch (err) {}
 }
 async function makeOffer() {
   setStatus($('sStatus'), sRestart ? 'O ecrã pediu outro formato de vídeo (' + sRestart + '). A religar…' : 'A ligar ao ecrã…', 'warn');
   await loadAppRelay();   // credenciais do servidor da app (rápido: ficam guardadas 3 h)
   if (!sStream) return;
-  sOwn = ownOnly(); sDropRelay = sOwn;
+  sOwn = ownOnly(); sDropRelay = sOwn; sScreen = null; sCodec = ''; sCpuBad = 0;
   const pc = sPc = new RTCPeerConnection(rtcConfig(sOwn));
   sStream.getTracks().forEach(t => pc.addTrack(t, sStream));
   await dropVp9IfSlow(pc);
@@ -1542,10 +1616,17 @@ async function senderMsg(m) {
   if (!sPc) return;
   if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp && sPc.currentRemoteDescription) {
     // resposta a um "religar" (ICE restart): só é aceite se vier do MESMO ecrã e assinada
-    if (fpOf(p.sdp.sdp) !== sAnswerFp || sPc.signalingState !== 'have-local-offer') return;
+    if (sPc.signalingState !== 'have-local-offer') return;
     if (!(await authCheck(sKeys.key, answerMsg(sCid, sPc.localDescription.sdp, p.sdp.sdp), p.auth))) return;
+    if (fpOf(p.sdp.sdp) !== sAnswerFp) {   // é o ecrã certo (sabe o código), mas recomeçou do zero: ligar de novo
+      if (sStream) { window.__peerRestarted = (window.__peerRestarted || 0) + 1; restartPeer(); }
+      return;
+    }
+    const nc = sdpVideoCodec(p.sdp.sdp), changed = nc && nc !== sCodec;
+    if (nc) sCodec = nc;
     try { await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brEff(sCur), !sAdapt), OPUS_HQ) }); }
     catch (e) { console.warn('religar', e); }
+    if (changed) setBitrate(sPc);
   } else if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp) {
     // só aceita a resposta assinada com a chave do código (prova que é o ecrã certo)
     if (!(await authCheck(sKeys.key, answerMsg(sCid, sOfferSdp, p.sdp.sdp), p.auth))) {
@@ -1644,14 +1725,17 @@ async function iceRestart(force) {   // force: só para testes
   } catch (e) { console.warn('ice restart', e); }
   if (!force) scheduleIceRestart(8000);   // se não voltar, tenta outra vez
 }
-window.addEventListener('pagehide', () => { if (sSig && sDst && sPc) sSig.send('LEAVE', sDst, { type: 'media', connectionId: sCid }); });
+window.addEventListener('pagehide', () => {
+  if (sSig && sDst && sPc) sSig.send('LEAVE', sDst, { type: 'media', connectionId: sCid });
+  if (vSig && vRemote) vSig.send('LEAVE', vRemote.src, { type: 'media', connectionId: vRemote.cid });   // o ecrã fechou/recarregou
+});
 
 // O Tesla pediu para religar (normalmente para mudar o formato de vídeo)
 async function restartPeer(codec) {
   if (sPc) { try { sPc.close(); } catch (e) {} }
   sPc = null; sCtrl = null; sPending = []; sConnected = false; clearTimeout(sIceTimer); sIceTimer = null; sIceTries = 0;
   sCid = 'mc_' + rnd(12);
-  sRestart = codec ? ({ vp8: 'VP8', h264: 'H.264', vp9: 'VP9' }[codec] || codec) : 'outro';
+  sRestart = codec ? (CODEC_LABEL[codec] || codec) : 'outro';
   sAuto = true;   // já confirmaste o código com este Tesla: religar sem perguntar
   await makeOffer();
 }
@@ -1684,7 +1768,7 @@ async function applyBitrate(pc, br, fps) {
     if (!p.encodings || !p.encodings.length) continue;
     if (s.track.kind === 'audio') {
       // som estéreo a 128 kbps (o Opus já soa igual ao original assim) e com prioridade na rede
-      p.encodings[0].maxBitrate = 128000;
+      p.encodings[0].maxBitrate = sSave ? 96000 : 128000;
       p.encodings[0].priority = 'high'; p.encodings[0].networkPriority = 'high';
     } else {
       const fit = fitInfo(s.track);
@@ -1729,24 +1813,26 @@ function stopSending(msg, kind) {
   if (sSig) { sSig.close(); sSig = null; }
   if (sStream) { sStream.getTracks().forEach(t => t.stop()); sStream = null; }
   sPending = []; sConnected = false;
-  $('preview').srcObject = null; $('preview').style.display = 'none';
+  $('preview').srcObject = null; $('preview').style.display = 'none'; $('pvNote').classList.add('hidden'); sPvShown = false;
   $('goBtn').style.display = 'block'; $('stopBtn').style.display = 'none';
   setStatus($('sStatus'), msg || 'Parado', kind);
 }
 
 /* ---------------- REDES DIFERENTES (TURN próprio) ---------------- */
 function netBox(p) {
-  return '<details class="net" id="net-' + p + '"><summary>Ligar entre redes diferentes (opcional)</summary>' +
-    '<p>Quase sempre liga sozinho, em qualquer rede. Se não ligar (dados móveis, Wi-Fi de hotel ou empresa), cria uma conta ' +
-    'grátis num serviço TURN (por exemplo ExpressTURN) e cola aqui os dados. Basta fazê-lo num dos aparelhos (de preferência ' +
-    'no aparelho que envia a imagem). Ficam guardados só neste browser.</p>' +
+  return '<details class="net" id="net-' + p + '"><summary>Servidor de ligação: o da app ou o teu</summary>' +
+    '<p>Quando os dois aparelhos não conseguem ligar direto (redes diferentes, dados móveis), a imagem passa por um servidor. ' +
+    'Escolhe qual:</p>' +
+    '<div class="seg tPick"><button type="button" data-v="app" onclick="setTurnOnly(false)">Servidor da app<small>grátis, partilhado por todos</small></button>' +
+      '<button type="button" data-v="mine" onclick="setTurnOnly(true)">O meu servidor<small>a tua conta TURN (ex.: ExpressTURN)</small></button></div>' +
+    '<div class="tMine"><p>Cola aqui os dados da tua conta TURN (no ExpressTURN estão no painel da conta). Basta fazê-lo num dos ' +
+    'aparelhos (de preferência no que envia a imagem). Ficam guardados só neste browser.</p>' +
     '<label>Servidor (endereço)</label><input class="tUrl" placeholder="relay1.expressturn.com:3478" autocomplete="off" spellcheck="false" autocapitalize="off">' +
     '<label>Utilizador</label><input class="tUser" autocomplete="off" spellcheck="false" autocapitalize="off">' +
     '<label>Palavra-passe</label><input class="tPass" type="password" autocomplete="off">' +
     '<div class="row"><button class="btn ghost" onclick="saveTurn(\'' + p + '\')">Guardar e testar</button>' +
-    '<button class="btn ghost" onclick="clearTurn(\'' + p + '\')">Apagar</button></div>' +
-    '<label class="chk tOnlyRow"><input type="checkbox" class="tOnly" onchange="setTurnOnly(this.checked)"> ' +
-      '<span><b>Usar o meu servidor em vez dos da app</b> (e dos grátis). A ligação direta continua a ser tentada primeiro.</span></label>' +
+    '<button class="btn ghost" onclick="clearTurn(\'' + p + '\')">Apagar</button>' +
+    '<button class="btn ghost tForce hidden" onclick="saveTurn(\'' + p + '\', true)">Guardar mesmo assim</button></div></div>' +
     '<div class="tStat"><div class="status"></div></div>' +
     '<hr style="border-color:#2a3350"><b>Mesma rede (mesmo router) e não liga?</b> ' +
       (p === 's' ? 'Carrega aqui neste aparelho.' : 'Se este ecrã for um computador ou telemóvel com Chrome, carrega aqui também (num carro não é preciso).') +
@@ -1756,34 +1842,48 @@ function netBox(p) {
     '<div class="row"><button class="btn ghost tNet" onclick="testNet(\'' + p + '\')">Testar a rede</button></div><div class="tRes"></div></details>';
 }
 function netEl(p, cls) { return document.querySelector('#net-' + p + ' .' + cls + (cls === 'tStat' ? ' .status' : '')); }
-function renderNet() {
+function renderNet(keepFields) {
   const t = myTurn();
   ['s', 'v'].forEach(p => {
     if (!$('net-' + p)) return;
-    netEl(p, 'tUrl').value = t ? (t.label || t.urls.join(' ')) : '';
-    netEl(p, 'tUser').value = t ? t.username || '' : '';
-    netEl(p, 'tPass').value = t ? t.credential || '' : '';
-    netEl(p, 'tOnly').checked = ownOnly();
-    document.querySelector('#net-' + p + ' .tOnlyRow').classList.toggle('hidden', !t);
-    setStatus(netEl(p, 'tStat'), !t ? 'A usar os servidores grátis e o da app.' : ownOnly() ? '✔ A usar o teu servidor (em vez dos da app)' : '✔ O teu servidor fica de reserva (usa primeiro os grátis e o da app)', t ? 'ok' : '');
+    if (!keepFields) {
+      netEl(p, 'tUrl').value = t ? (t.label || t.urls.join(' ')) : '';
+      netEl(p, 'tUser').value = t ? t.username || '' : '';
+      netEl(p, 'tPass').value = t ? t.credential || '' : '';
+    }
+    const pref = turnPref(), box = $('net-' + p);
+    box.querySelectorAll('.tPick button').forEach(b => b.classList.toggle('sel', b.dataset.v === pref));
+    box.querySelector('.tMine').classList.toggle('hidden', pref !== 'mine' && !t);
+    box.querySelector('.tForce').classList.add('hidden');
+    setStatus(netEl(p, 'tStat'),
+      pref === 'mine' ? (t ? '✔ A usar o teu servidor (em vez do da app). A ligação direta continua a ser tentada primeiro.'
+                           : 'Ainda não guardaste o teu servidor: mete os dados e carrega em “Guardar e testar”. Até lá usa o da app.')
+                      : '✔ A usar o servidor da app' + (t ? ' (o teu fica guardado de reserva, em último)' : '') + '.',
+      pref === 'mine' && !t ? 'warn' : 'ok');
   });
 }
-async function saveTurn(p) {
+async function saveTurn(p, force) {
   const label = netEl(p, 'tUrl').value.trim(), urls = turnUrls(label);
   const cfg = { urls, username: netEl(p, 'tUser').value.trim(), credential: netEl(p, 'tPass').value, label };
   const st = netEl(p, 'tStat');
   if (!urls.length) { setStatus(st, 'Endereço inválido. Ex.: relay1.expressturn.com:3478', 'err'); return; }
   try { new RTCPeerConnection({ iceServers: [cfg] }).close(); }
   catch (e) { setStatus(st, 'O browser recusou estes dados (' + e.name + '). Confirma o endereço, o utilizador e a palavra-passe.', 'err'); return; }
-  setStatus(st, 'A testar o servidor…', 'warn');
-  const ok = await testTurn(cfg);
-  if (!ok) { setStatus(st, '✖ O servidor não respondeu. Confirma os dados (não foi guardado).', 'err'); return; }
+  if (!force) {
+    setStatus(st, 'A testar o servidor…', 'warn');
+    const ok = await testTurn(cfg);
+    if (!ok) {
+      setStatus(st, '✖ O servidor não respondeu ao teste. Confirma o endereço, o utilizador e a palavra-passe. Se tens a certeza que estão certos (algumas redes bloqueiam o teste), carrega em “Guardar mesmo assim”.', 'err');
+      $('net-' + p).querySelector('.tForce').classList.remove('hidden');
+      return;
+    }
+  }
   try { localStorage.setItem('vx-turn', JSON.stringify(cfg)); } catch (e) {}
   store('vx-turn-only', '1');   // guardaste o teu servidor: passa a ser esse o usado (dá para desligar na caixa)
   renderNet();
-  setStatus(st, '✔ Servidor TURN a funcionar e guardado.', 'ok');
+  setStatus(st, force ? '✔ Guardado (sem teste). A partir de agora usa o teu servidor.' : '✔ O teu servidor funciona e foi guardado. A partir de agora usa o teu servidor em vez do da app.', 'ok');
 }
-function setTurnOnly(on) { store('vx-turn-only', on ? '1' : '0'); renderNet(); }
+function setTurnOnly(on) { store('vx-turn-only', on ? '1' : '0'); renderNet(true); }
 function clearTurn(p) { try { localStorage.removeItem('vx-turn'); } catch (e) {} renderNet(); }
 // Pede ao servidor um endereço de retransmissão ("relay"): se o der, os dados estão certos
 function testTurn(cfg, ms) {
@@ -1866,7 +1966,7 @@ if (!CAN_SEND) $('noSendNote').classList.remove('hidden');
 
 /* ---------------- ARRANQUE ---------------- */
 $('mode').value = sMode;
-$('adapt').checked = sAdapt; setAdapt(sAdapt);
+$('adapt').checked = sAdapt; setAdapt(sAdapt); $('dataSel').value = sSave ? 'save' : 'best';
 $('latSel').value = latChoice();
 const last = store('tcast-last'); if (last) $('code').value = last;
 { const sq = store('tcast-q'), sf = store('vx-fps');   // chave nova: o padrão passou a 60 fps

@@ -10,7 +10,7 @@ com o browser de outro aparelho (carro, TV, tablet, computador), por WebRTC. Num
 - Sem contas, sem anúncios, sem recolha de dados.
 - Imagem e som encriptados de ponta a ponta entre os dois aparelhos.
 - Código de 8 caracteres que funciona como chave secreta: a ligação é assinada com ele (sem passos extra) e o servidor nunca o vê.
-- Mesma qualidade com menos dados: escolhe sozinho o formato de vídeo mais eficiente que o ecrã descodifica bem (VP9/H.264/VP8), nunca envia mais pixéis do que o ecrã de destino mostra, e som estéreo Opus 128 kb/s.
+- Mesma qualidade com menos dados: escolhe sozinho o formato de vídeo mais eficiente que o ecrã descodifica bem (AV1 com placa gráfica, VP9, H.264 High, VP8; passa sozinho para um mais leve se o processador não aguentar), nunca envia mais pixéis do que o ecrã de destino mostra, som estéreo Opus 128 kb/s, opção “Poupar dados” e anti-soluços automático no ecrã de destino.
 - Funciona entre redes diferentes (TURN por UDP/TCP, com opção de usar o teu servidor TURN em vez dos da app) e religa sozinho se a ligação cair.
 
 Licença: [MIT](LICENSE). Fornecido "tal como está", sem garantias.
