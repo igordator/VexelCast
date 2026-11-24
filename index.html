@@ -72,13 +72,16 @@
   .hint { font-size: 14px; color: var(--muted); margin-top: -6px; }
   #qInfo { font-size: 16px; padding: 10px 12px; border-radius: 10px; background: rgba(0,0,0,.6); color: #fff; align-self: center; }
   #qPanel { position: absolute; top: 70px; right: 14px; background: rgba(15,20,35,.95); border: 2px solid #3b4566;
-    border-radius: 16px; padding: 16px; display: none; flex-direction: column; gap: 10px; min-width: 300px; color: #fff; }
+    border-radius: 16px; padding: 16px; display: none; flex-direction: column; gap: 10px; min-width: min(300px, calc(100vw - 28px)); color: #fff;
+    max-width: calc(100vw - 28px); max-height: calc(100vh - 84px); max-height: calc(100dvh - 84px); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; }
   #qPanel.on { display: flex; }
   #qPanel h3 { margin: 0; font-size: 20px; }
   #qPanel .opts { display: flex; flex-wrap: wrap; gap: 8px; }
   #qPanel button { font-size: 18px; padding: 10px 14px; border-radius: 10px; border: 2px solid #3b4566; background: #1f2740; color: #fff; cursor: pointer; }
   #qPanel button.sel { background: var(--blue); border-color: var(--blue); }
   #qPanel small { color: var(--muted); font-size: 14px; }
+  #qPanel .avRow { align-items: center; }
+  #qPanel .avRow span { min-width: 150px; text-align: center; font-weight: 600; }
   #diag { position: absolute; left: 14px; bottom: 14px; max-width: 520px; background: rgba(10,14,26,.92); border: 2px solid #3b4566;
     border-radius: 14px; padding: 12px 16px; color: #e8ecf6; font-size: 15px; line-height: 1.55; display: none; }
   #diag.on { display: block; }
@@ -311,6 +314,12 @@
     </div>
     <h3>Atraso</h3>
     <div class="opts" id="lOpts"></div>
+    <h3>Acertar som e imagem</h3>
+    <div class="opts avRow"><button id="avMinus" onclick="event.stopPropagation(); nudgeAv(-20)">Som mais cedo</button>
+      <span id="avVal">Certo</span>
+      <button id="avPlus" onclick="event.stopPropagation(); nudgeAv(20)">Som mais tarde</button>
+      <button id="avZero" onclick="event.stopPropagation(); setAv(0)">Repor</button></div>
+    <small id="avHelp">Só se o som e a imagem não baterem certo (por exemplo, com auscultadores Bluetooth). Fica guardado neste aparelho.</small>
     <small>Se ficar aos soluços, escolhe uma qualidade mais baixa ou o atraso “Estável”.</small>
   </div>
 </div>
@@ -323,7 +332,7 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
-const APP_VERSION = '5.4';
+const APP_VERSION = '5.8';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
@@ -424,7 +433,7 @@ function sdpParams(s, add) {
   }
   return kv.join(';');
 }
-function tuneSdp(sdp, video, audio) {
+function tuneSdp(sdp, video, audio, ptime) {
   const eol = sdp.includes('\r\n') ? '\r\n' : '\n';
   const secs = [[]];
   for (const l of sdp.split(eol)) { if (l.startsWith('m=')) secs.push([]); secs[secs.length - 1].push(l); }
@@ -438,6 +447,11 @@ function tuneSdp(sdp, video, audio) {
       if (kind === 'audio' && audio && n === 'OPUS') want[m[1]] = audio;
     });
     if (!Object.keys(want).length) return sec;
+    if (kind === 'audio' && ptime) {   // pacotes de som maiores = menos cabeçalhos a viajar (a qualidade não muda)
+      sec = sec.filter(l => !/^a=(max)?ptime:/.test(l));
+      const i = sec.findIndex(l => l.startsWith('a=rtpmap:'));
+      sec.splice(i < 0 ? sec.length : i, 0, 'a=ptime:' + ptime, 'a=maxptime:' + Math.max(60, ptime));
+    }
     const done = {}, res = sec.map(l => {
       const f = l.match(/^a=fmtp:(\d+) (.*)$/);
       if (f && want[f[1]]) { done[f[1]] = 1; return 'a=fmtp:' + f[1] + ' ' + sdpParams(f[2], want[f[1]]); }
@@ -450,7 +464,12 @@ function tuneSdp(sdp, video, audio) {
     return res;
   }).flat().join(eol);
 }
-const OPUS_HQ = { stereo: 1, 'sprop-stereo': 1, maxaveragebitrate: 128000, maxplaybackrate: 48000, useinbandfec: 1, usedtx: 0 };
+/* Som: Opus estéreo 48 kHz, até 128 kb/s (a partir daqui ninguém ouve diferença; é o ponto ideal qualidade/dados).
+   usedtx: quando não há som nenhum (silêncio digital), quase não se envia nada (poupa ~25 kb/s); com som, nada muda.
+   Pacotes de 40 ms em vez de 20: metade dos cabeçalhos de rede (~12 kb/s a menos), a mesma qualidade
+   (Poupar dados: 60 ms). Se a rede começar a perder pacotes, volta sozinho a 20 ms. */
+const OPUS_HQ = { stereo: 1, 'sprop-stereo': 1, maxaveragebitrate: 128000, maxplaybackrate: 48000, 'sprop-maxcapturerate': 48000, useinbandfec: 1, usedtx: 1, cbr: 0 };
+function audioPtime() { return sLossy ? 20 : sSave ? 60 : 40; }
 // fixed = ajuste automático desligado: arranca no máximo e não deixa o bitrate descer abaixo de 85%
 function videoSdpParams(br, fixed) {
   const k = Math.round(br / 1000);
@@ -1046,6 +1065,7 @@ function closeViewerPc() {
   $('waitOv').style.display = 'none';
   vWatch = null;
   vPc = null; vRemote = null; vPending = []; vCtrl = null; vQ = null; vJbBoost = 0;
+  stopAvAudio(); stopAvVideo(); vMediaKey = ''; vSound = false;
   $('qPanel').classList.remove('on');
   clearInterval(vInfoTimer); vInfoTimer = null;
 }
@@ -1061,6 +1081,8 @@ function renderQPanel() {
     });
   };
   mk($('lOpts'), Object.keys(LAT).map(k => [k, LAT_LABEL[k]]), latChoice(), setLatency);
+  $('avVal').textContent = avLabel(); $('avMinus').disabled = !AV_VIDEO_OK && vAv <= 0;
+  if (!AV_VIDEO_OK) $('avHelp').textContent = 'Só se o som e a imagem não baterem certo. Neste browser só dá para atrasar o som (se o som vier adiantado). Fica guardado neste aparelho.';
   $('qRemote').style.display = vQ ? '' : 'none';
   if (!vQ) return;
   mk($('qOpts'), (vQ.options || Object.keys(Q_LABEL)).map(k => [k, Q_LABEL[k] || k]), vQ.q, q => requestQuality(q, vQ.fps));
@@ -1144,7 +1166,7 @@ async function updateInfo() {
     w.framesAt = now; vRemote.shown = true; if (codecChoice() === 'auto') store('tcast-codec-ok', vCodec);
     $('waitOv').style.display = 'none';
     setStatus($('vStatus'), 'Ligado ✔', 'ok');
-    if (v.srcObject && v.srcObject.getAudioTracks().length && v.muted) { $('unmute').innerHTML = richText('🔊 Toca aqui para ligar o som'); $('unmute').style.display = 'block'; }
+    if (v.srcObject && v.srcObject.getAudioTracks().length && !vSound) { $('unmute').innerHTML = richText('🔊 Toca aqui para ligar o som'); $('unmute').style.display = 'block'; }
   }
   // 4) Anti-soluços
   if (w.framesAt && d.freeze !== undefined) {
@@ -1197,9 +1219,99 @@ function renderDiag(d) {
     (vRemote ? '<br><b>Endereços:</b> este ecrã: ' + kindsText(vRemote.lk) + ' · outro aparelho: ' + kindsText(vRemote.rk) : '') +
     (vRemote && vRemote.pathTxt ? '<br><b>Caminho:</b> ' + richText(vRemote.pathTxt) : '');
 }
+/* ---------- Acertar som e imagem ----------
+   O WebRTC já põe o som e a imagem em sincronia (vão no mesmo "stream"). Isto é só para quando o aparelho
+   que recebe atrasa um deles à saída (ex.: auscultadores Bluetooth atrasam o som ~0,2 s).
+   + = som mais tarde (atrasa o som com um atraso digital, sem perder qualidade)
+   − = som mais cedo (atrasa a imagem, guardando as últimas imagens uns milissegundos) */
+const AV_MAX = 400;
+let vAv = Math.max(-AV_MAX, Math.min(AV_MAX, Number(store('vx-av')) || 0));
+if (vAv < 0 && !(typeof MediaStreamTrackProcessor === 'function' && typeof MediaStreamTrackGenerator === 'function')) vAv = 0;
+let vSound = false, avCtx = null, avA = null, avV = null, vMediaKey = '';
+const AV_VIDEO_OK = typeof MediaStreamTrackProcessor === 'function' && typeof MediaStreamTrackGenerator === 'function';
+function avLabel() { return vAv === 0 ? 'Certo' : vAv > 0 ? 'Som ' + vAv + ' ms mais tarde' : 'Som ' + (-vAv) + ' ms mais cedo'; }
+function nudgeAv(d) { setAv(vAv + d); }
+function setAv(ms) {
+  ms = Math.max(AV_VIDEO_OK ? -AV_MAX : 0, Math.min(AV_MAX, Math.round(ms / 20) * 20));
+  vAv = ms; store('vx-av', String(ms));
+  if ($('avVal')) $('avVal').textContent = avLabel();
+  if ($('avMinus')) $('avMinus').disabled = !AV_VIDEO_OK && vAv <= 0;
+  attachMedia(true);
+}
+function stopAvAudio() {
+  if (avA) { try { avA.src.disconnect(); avA.d.disconnect(); avA.g.disconnect(); } catch (e) {} avA = null; }
+}
+function stopAvVideo() {
+  if (avV) { avV.stop = true; try { avV.gen.stop(); } catch (e) {} avV.q.forEach(f => { try { f.frame.close(); } catch (e) {} }); avV = null; }
+}
+function startAvVideo(track) {
+  const proc = new MediaStreamTrackProcessor({ track, maxBufferSize: 90 });
+  const gen = new MediaStreamTrackGenerator({ kind: 'video' });
+  const st = { gen, q: [], stop: false, track };
+  const reader = proc.readable.getReader(), writer = gen.writable.getWriter();
+  (async () => {   // ler as imagens que chegam...
+    try {
+      while (!st.stop) {
+        const { value, done } = await reader.read();
+        if (done || st.stop) { if (value) value.close(); break; }
+        st.q.push({ frame: value, t: performance.now() });
+        while (st.q.length > 120) st.q.shift().frame.close();   // nunca guardar demasiadas
+      }
+    } catch (e) {}
+    try { reader.cancel(); } catch (e) {}
+  })();
+  (async () => {   // ...e mostrá-las só passado o atraso escolhido
+    while (!st.stop) {
+      const hold = -vAv, now = performance.now();
+      while (st.q.length && now - st.q[0].t >= hold) {
+        const f = st.q.shift().frame;
+        try { await writer.write(f); } catch (e) { try { f.close(); } catch (er) {} }
+      }
+      await new Promise(r => setTimeout(r, 4));
+    }
+  })();
+  return st;
+}
+// Escolhe o que o leitor mostra: o stream recebido tal e qual, ou com o som/imagem atrasados
+function attachMedia(force) {
+  const v = $('video'); if (!vStream) return;
+  const vt = vStream.getVideoTracks()[0], at = vStream.getAudioTracks()[0];
+  const key = (vt ? vt.id : '') + '|' + (at ? at.id : '') + '|' + (vAv > 0 ? 'a' : vAv < 0 && AV_VIDEO_OK ? 'v' : '0');
+  if (!force && key === vMediaKey) return;
+  const changed = key !== vMediaKey; vMediaKey = key;
+  // som mais tarde: o som passa por um atraso digital (Web Audio); o leitor fica sem som próprio
+  if (vAv > 0 && at) {
+    try {
+      if (!avCtx) avCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!avA || avA.track !== at) {
+        stopAvAudio();
+        const src = avCtx.createMediaStreamSource(new MediaStream([at])), d = avCtx.createDelay(1), g = avCtx.createGain();
+        src.connect(d); d.connect(g); g.connect(avCtx.destination);
+        avA = { track: at, src, d, g };
+      }
+      avA.d.delayTime.value = vAv / 1000;
+      avA.g.gain.value = vSound ? 1 : 0;
+      if (vSound) avCtx.resume().catch(() => {});
+    } catch (e) { stopAvAudio(); }
+  } else stopAvAudio();
+  // som mais cedo: a imagem é mostrada uns milissegundos mais tarde
+  if (vAv < 0 && AV_VIDEO_OK && vt) {
+    if (!avV || avV.track !== vt) { stopAvVideo(); try { avV = startAvVideo(vt); } catch (e) { avV = null; } }
+  } else stopAvVideo();
+  const want = avV ? [avV.gen].concat(at ? [at] : []) : null;
+  if (changed || force) {
+    const cur = v.srcObject, curTracks = cur ? cur.getTracks().map(t => t.id).join() : '';
+    const next = want ? new MediaStream(want) : vStream, nextTracks = next.getTracks().map(t => t.id).join();
+    if (cur !== next && curTracks !== nextTracks) { v.srcObject = next; v.play().catch(() => {}); }
+    else if (!want && cur !== vStream) { v.srcObject = vStream; v.play().catch(() => {}); }
+  }
+  v.muted = !vSound || !!avA;   // com o atraso de som ligado, o som sai pelo Web Audio
+  window.__av = { ms: vAv, audioDelay: avA ? avA.d.delayTime.value : 0, videoQ: avV ? avV.q.length : 0, videoGen: !!avV };
+}
 function playStream(stream) {
   const v = $('video');
-  if (v.srcObject !== stream) { v.srcObject = stream; v.muted = true; }
+  if (vStream !== stream) vStream = stream;
+  attachMedia();
   $('unmute').innerHTML = richText('🔊 Toca aqui para ligar o som');
   const fresh = !$('player').classList.contains('on');
   $('player').classList.add('on'); document.body.classList.add('playing');
@@ -1207,11 +1319,18 @@ function playStream(stream) {
   if (fresh) { clearTimeout(barTimer); $('bar').classList.remove('show'); $('player').classList.add('idle'); }
   if (!vInfoTimer) vInfoTimer = setInterval(updateInfo, 1000);
   $('unmute').style.display = 'none';
+  // tirar o "A ligar…" logo na primeira imagem mostrada (sem esperar pela verificação de cada segundo)
+  if (v.requestVideoFrameCallback && !v.__firstCb) {
+    v.__firstCb = true;
+    v.requestVideoFrameCallback(() => { v.__firstCb = false; if (vRemote && vRemote.accepted && !vRemote.lostAt) $('waitOv').style.display = 'none'; });
+  }
   v.play().catch(() => {});
 }
 function unmute() {
   const v = $('video');
-  v.muted = false; v.volume = 1;
+  vSound = true; v.volume = 1;
+  attachMedia(true);
+  if (avCtx) avCtx.resume().catch(() => {});
   v.play().catch(() => {});
   $('unmute').style.display = 'none';
 }
@@ -1376,8 +1495,9 @@ function fitInfo(track) {
 }
 let sSave = store('vx-data') === 'save';
 function setDataSave(on) {
+  const was = sSave;
   sSave = !!on; store('vx-data', sSave ? 'save' : 'best'); if ($('dataSel')) $('dataSel').value = sSave ? 'save' : 'best';
-  if (sPc) setBitrate(sPc);
+  if (sPc) { setBitrate(sPc); if (was !== sSave) renegotiateSender(); }
 }
 function brEff(cur) {
   let f = (CODEC_EFF[sCodec] || 1) * (sSave ? 0.55 : 1);   // Poupar dados: ~45% menos (a imagem fica um pouco mais suave)
@@ -1448,21 +1568,58 @@ function startPathWatch() {
     $('sPath').className = 'hint path ' + (pi.mine ? 'mine' : pi.kind === 'direct' ? 'direct' : 'free');
     if (changed) sendState();
     window.__sPath = pi;
-    cpuWatch(pc);
+    cpuWatch(pc); audioLossWatch(pc);
   }, window.PATH_MS || 3000);
 }
 
+/* Som sem falhas em redes que perdem pacotes (ex.: dados móveis no carro): pacotes de 40/60 ms poupam dados,
+   mas cada pacote perdido é um buraco maior. Se o ecrã disser que se estão a perder mais de 2% dos pacotes de som,
+   passa sozinho a pacotes de 20 ms (buracos mais curtos, que o Opus disfarça bem); quando a rede fica boa durante
+   um minuto, volta aos pacotes grandes. Sem cortar a ligação. */
+let sLossy = false, sLossHi = 0, sLossLo = 0, sLossPrev = null;
+async function audioLossWatch(pc) {
+  if (!sConfirmed) return;
+  let lost = null, sent = null;
+  try {
+    (await pc.getStats()).forEach(x => {
+      if (x.type === 'remote-inbound-rtp' && x.kind === 'audio' && typeof x.packetsLost === 'number') lost = x.packetsLost;
+      if (x.type === 'outbound-rtp' && x.kind === 'audio' && typeof x.packetsSent === 'number') sent = x.packetsSent;
+    });
+  } catch (e) { return; }
+  if (pc !== sPc || lost === null || sent === null) return;
+  // perdas contadas só neste intervalo e só com pacotes suficientes (no silêncio quase não há pacotes,
+  // e um único perdido não pode parecer "muita perda")
+  const prev = sLossPrev; sLossPrev = { lost, sent };
+  if (!prev) return;
+  const dSent = sent - prev.sent, dLost = Math.max(0, lost - prev.lost);
+  let fl = dSent >= 30 ? dLost / dSent : null;
+  if (window.__fakeAudioLoss !== undefined) fl = window.__fakeAudioLoss;
+  if (fl === null) return;
+  window.__audioLoss = fl;
+  if (fl > 0.02) { sLossHi++; sLossLo = 0; } else if (fl < 0.005) { sLossLo++; sLossHi = 0; } else { sLossHi = 0; sLossLo = 0; }
+  if (!sLossy && sLossHi >= (window.LOSS_ON_TICKS || 2)) { sLossy = true; sLossHi = sLossLo = 0; window.__lossy = true; renegotiateSender(); }
+  else if (sLossy && sLossLo >= (window.LOSS_OFF_TICKS || 20)) { sLossy = false; sLossHi = sLossLo = 0; window.__lossy = false; renegotiateSender(); }
+}
 /* Se o processador deste aparelho não aguentar o VP9/AV1 (o browser começa a baixar a imagem por falta de CPU),
    passa sozinho para um formato mais leve, sem desligar, e lembra-se disso neste aparelho. */
-let sCpuBad = 0;
+let sCpuBad = 0, sCpuHist = [], sCpuPrev = null;
 async function cpuWatch(pc) {
-  if (!/^(VP9|AV1)$/.test(sCodec) || !sConfirmed) { sCpuBad = 0; return; }
-  let q = '';
-  try { (await pc.getStats()).forEach(x => { if (x.type === 'outbound-rtp' && x.kind === 'video') q = x.qualityLimitationReason; }); } catch (e) { return; }
+  if (!/^(VP9|AV1)$/.test(sCodec) || !sConfirmed) { sCpuHist = []; sCpuPrev = null; return; }
+  let q = '', cpu = null;
+  try {
+    (await pc.getStats()).forEach(x => {
+      if (x.type === 'outbound-rtp' && x.kind === 'video') { q = x.qualityLimitationReason; cpu = x.qualityLimitationDurations ? x.qualityLimitationDurations.cpu : null; }
+    });
+  } catch (e) { return; }
   if (pc !== sPc) return;
-  sCpuBad = q === 'cpu' ? sCpuBad + 1 : 0;
-  if (sCpuBad < (window.CPU_TICKS || 3)) return;
-  sCpuBad = 0; store('vx-enc-light', '1'); window.__cpuFallback = sCodec;
+  // conta o tempo em que o processador esteve no limite (o limite pode ligar e desligar várias vezes seguidas)
+  const now = performance.now(), prev = sCpuPrev; sCpuPrev = { cpu, t: now };
+  const share = prev && cpu !== null && prev.cpu !== null ? (cpu - prev.cpu) / Math.max(0.5, (now - prev.t) / 1000) : 0;
+  sCpuHist.push(q === 'cpu' || share >= 0.4);
+  const need = window.CPU_TICKS || 3;
+  sCpuHist = sCpuHist.slice(-Math.max(4, need + 1));
+  if (sCpuHist.filter(Boolean).length < need) return;
+  sCpuHist = []; store('vx-enc-light', '1'); window.__cpuFallback = sCodec;
   try {
     const caps = RTCRtpReceiver.getCapabilities('video').codecs.filter(c => !/vp9|av1/i.test(c.mimeType));
     pc.getTransceivers().forEach(t => { if (t.sender && t.sender.track && t.sender.track.kind === 'video' && t.setCodecPreferences) t.setCodecPreferences(caps); });
@@ -1556,7 +1713,7 @@ async function makeOffer() {
   setStatus($('sStatus'), sRestart ? 'O ecrã pediu outro formato de vídeo (' + sRestart + '). A religar…' : 'A ligar ao ecrã…', 'warn');
   await loadAppRelay();   // credenciais do servidor da app (rápido: ficam guardadas 3 h)
   if (!sStream) return;
-  sOwn = ownOnly(); sDropRelay = sOwn; sScreen = null; sCodec = ''; sCpuBad = 0;
+  sOwn = ownOnly(); sDropRelay = sOwn; sScreen = null; sCodec = ''; sCpuBad = 0; sCpuHist = []; sCpuPrev = null; sLossy = false; sLossHi = 0; sLossLo = 0; sLossPrev = null;
   const pc = sPc = new RTCPeerConnection(rtcConfig(sOwn));
   sStream.getTracks().forEach(t => pc.addTrack(t, sStream));
   await dropVp9IfSlow(pc);
@@ -1624,7 +1781,7 @@ async function senderMsg(m) {
     }
     const nc = sdpVideoCodec(p.sdp.sdp), changed = nc && nc !== sCodec;
     if (nc) sCodec = nc;
-    try { await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brEff(sCur), !sAdapt), OPUS_HQ) }); }
+    try { await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brEff(sCur), !sAdapt), OPUS_HQ, audioPtime()) }); }
     catch (e) { console.warn('religar', e); }
     if (changed) setBitrate(sPc);
   } else if (m.type === 'ANSWER' && p.connectionId === sCid && p.sdp) {
@@ -1639,7 +1796,7 @@ async function senderMsg(m) {
       sCodec = sdpVideoCodec(p.sdp.sdp);
       kindsFromSdp(p.sdp.sdp, sRK);
       { const pc = sPc; clearTimeout(sNoPathTimer); sNoPathTimer = setTimeout(() => { if (pc === sPc && !sEver) showNoPath(true); }, window.NOPATH_MS || 15000); }
-      await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brEff(sCur), !sAdapt), OPUS_HQ) });
+      await sPc.setRemoteDescription({ type: 'answer', sdp: tuneSdp(p.sdp.sdp, videoSdpParams(brEff(sCur), !sAdapt), OPUS_HQ, audioPtime()) });
       for (const c of sPending) await sPc.addIceCandidate(c).catch(() => {});
       sPending = [];
       sAuto = false; sAccepted = true;
@@ -1768,7 +1925,7 @@ async function applyBitrate(pc, br, fps) {
     if (!p.encodings || !p.encodings.length) continue;
     if (s.track.kind === 'audio') {
       // som estéreo a 128 kbps (o Opus já soa igual ao original assim) e com prioridade na rede
-      p.encodings[0].maxBitrate = sSave ? 96000 : 128000;
+      p.encodings[0].maxBitrate = sSave ? 64000 : 128000;   // Poupar dados: 64 kb/s em estéreo ainda soa bem
       p.encodings[0].priority = 'high'; p.encodings[0].networkPriority = 'high';
     } else {
       const fit = fitInfo(s.track);
