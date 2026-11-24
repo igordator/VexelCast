@@ -332,7 +332,7 @@
    todos a mesma "língua".
    ===================================================================== */
 const PREFIX = 'vexelcast-';
-const APP_VERSION = '5.8';
+const APP_VERSION = '5.9';
 const params = new URLSearchParams(location.search);
 const SERVER = params.get('server') || 'wss://0.peerjs.com:443';
 /* Servidores para atravessar routers/firewalls. STUN descobre o endereço público; TURN retransmite
@@ -1508,10 +1508,50 @@ function brEff(cur) {
   }
   return Math.round(brFor(cur) * f);
 }
-function videoConstraints(cur) {
+/* "1080p" quer dizer o lado mais curto da imagem. Num ecrã ao alto (monitor rodado), o lado curto é a largura:
+   limitar a altura a 1080 deixava a imagem com só 607 pixéis de largura. */
+function isPortrait(track) {
+  if (!track) return false;
+  // a imagem atual diz a orientação (os limites mantêm a proporção); se ainda não houver, usa o tamanho máximo
+  let { width: w, height: h } = track.getSettings ? track.getSettings() : {};
+  if (!w || !h) { try { const c = track.getCapabilities ? track.getCapabilities() : {}; w = c.width && c.width.max; h = c.height && c.height.max; } catch (e) {} }
+  return !!(w && h && h > w * 1.05);
+}
+function videoConstraints(cur, track) {
   const c = { frameRate: { ideal: cur.fps, max: cur.fps } };
-  if (cur.q !== 'max') c.height = { max: QUALITY[cur.q].h };
+  // os dois lados sempre definidos: se faltar um, o Chrome usa a proporção do início da partilha e,
+  // se a imagem rodar a meio, encolhe-a (ex.: 338×608 em vez de 1080×1920)
+  if (cur.q !== 'max') {
+    const h = QUALITY[cur.q].h, p = isPortrait(track);
+    c.width = { max: p ? h : h * 4 }; c.height = { max: p ? h * 4 : h };
+  }
   return c;
+}
+let sDims = '', sPortrait = null;
+// logo a seguir a mudar os limites, o Chrome diz durante ~0,1 s que a imagem tem o tamanho do limite (ex.: 4320×1080):
+// esperar um bocadinho para ler o tamanho verdadeiro
+async function applyCapture(vt, c) {
+  try { await vt.applyConstraints(c); } catch (e) { console.warn('constraints', e); }
+  await new Promise(r => setTimeout(r, 350));
+}
+// a imagem partilhada mudou de tamanho ou de orientação (janela redimensionada, "partilhar este separador")
+async function checkDims() {
+  const vt = sStream && sStream.getVideoTracks()[0]; if (!vt || !sPc) return;
+  const p = isPortrait(vt);
+  if (sPortrait !== null && p !== sPortrait && sCur.q !== 'max') await applyCapture(vt, videoConstraints(sCur, vt));
+  sPortrait = isPortrait(vt);
+  let st = vt.getSettings(), d = st.width + 'x' + st.height;
+  if (d === sDims) {
+    // verificação de segurança: a redução e o teto de dados aplicados batem certo com o tamanho verdadeiro?
+    try {
+      const snd = sPc.getSenders().find(x => x.track === vt), e = snd && snd.getParameters().encodings[0];
+      if (e && sPc.signalingState === 'stable' && (Math.abs((e.scaleResolutionDownBy || 1) - fitInfo(vt).scale) > 0.01 || e.maxBitrate !== brEff(sCur))) setBitrate(sPc);
+    } catch (err) {}
+    return;
+  }
+  await new Promise(r => setTimeout(r, 350));   // confirmar que o tamanho novo é mesmo o verdadeiro
+  st = vt.getSettings(); if (st.width + 'x' + st.height !== d || !sPc) return;
+  sDims = d; setBitrate(sPc);   // teto de dados e redução recalculados para o novo tamanho
 }
 function readUi() {
   const q = QUALITY[$('quality').value] ? $('quality').value : '720';
@@ -1532,9 +1572,9 @@ async function setQuality(q, fps, from) {
   store('tcast-q', sCur.q); store('vx-fps', String(fps));
   const vt = sStream && sStream.getVideoTracks()[0];
   if (vt) {
-    const c = videoConstraints(sCur);
-    if (sCur.q === 'max') c.height = { max: 4320 };
-    try { await vt.applyConstraints(c); } catch (e) { console.warn('constraints', e); }
+    const c = videoConstraints(sCur, vt);
+    if (sCur.q === 'max') { c.width = { max: 7680 }; c.height = { max: 7680 }; }
+    await applyCapture(vt, c);
   }
   if (sPc) await setBitrate(sPc, brFor(sCur), fps);
   if (!sAdapt) renegotiateSender();   // novo mínimo de bitrate para a nova qualidade
@@ -1568,7 +1608,7 @@ function startPathWatch() {
     $('sPath').className = 'hint path ' + (pi.mine ? 'mine' : pi.kind === 'direct' ? 'direct' : 'free');
     if (changed) sendState();
     window.__sPath = pi;
-    cpuWatch(pc); audioLossWatch(pc);
+    cpuWatch(pc); audioLossWatch(pc); checkDims();
   }, window.PATH_MS || 3000);
 }
 
@@ -1650,6 +1690,8 @@ async function startSending() {
   }
   const vt = sStream.getVideoTracks()[0];
   if (vt) { vt.contentHint = sMode; vt.onended = () => stopSending('Parado'); }
+  sDims = ''; sPortrait = isPortrait(vt);
+  if (vt && sPortrait && sCur.q !== 'max') await applyCapture(vt, videoConstraints(sCur, vt));
   $('preview').srcObject = sStream; $('preview').style.display = 'block'; $('preview').play().catch(() => {});
   $('goBtn').style.display = 'none'; $('stopBtn').style.display = 'block';
 
